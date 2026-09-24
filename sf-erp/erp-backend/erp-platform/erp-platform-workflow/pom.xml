@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      erp-platform-workflow：审批工作流(流程定义/条件路由/待办已办/消息通知/预警)
+      分层约定: entity / mapper / service / service.impl / controller / dto
+      跨模块协作遵循 docs/开发规范.md：只按约定表结构读写，不 import 他人业务代码。
+    -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>erp-platform-workflow</artifactId>
+    <name>erp-platform-workflow</name>
+    <description>审批工作流(流程定义/条件路由/待办已办/消息通知/预警)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-framework</artifactId>
+        </dependency>
+        <!-- @OperLog 操作日志注解（切面在 erp-platform-system，bootstrap 统一装配） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-system</artifactId>
+        </dependency>
+        <!-- 统一通知事件契约（TaskCreated/ApprovalResult/Warn 事件由本模块 publish，notify 模块监听；反向不依赖） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-notify</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  角色-菜单关联 Mapper XML：重分配为整体覆盖语义，物理删除旧关联。
+-->
+<mapper namespace="com.mes.system.mapper.SysRoleMenuMapper">
+
+    <delete id="deletePhysicallyByRoleId">
+        DELETE FROM `sys_role_menu` WHERE `role_id` = #{roleId}
+    </delete>
+</mapper>

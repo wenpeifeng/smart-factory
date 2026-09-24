@@ -1,0 +1,305 @@
+{
+  "app": {
+    "title": "ERP Suite",
+    "adminTitle": "ERP Admin Center"
+  },
+  "login": {
+    "brand": {
+      "title": "ERP Group Suite",
+      "subtitle": "Supply Chain · Finance · Manufacturing, Unified"
+    },
+    "values": [
+      {
+        "title": "End-to-end Supply Chain",
+        "desc": "Purchase, sales and inventory documents penetrate in real time"
+      },
+      {
+        "title": "Finance-Business Integration",
+        "desc": "Vouchers generated automatically, 80% faster month-end closing"
+      },
+      {
+        "title": "Multi-org Group Control",
+        "desc": "Tenant isolation plus 5-level data scope, one group, one picture"
+      }
+    ],
+    "metrics": {
+      "turnover": "Inventory Turnover",
+      "delivery": "On-time Delivery",
+      "closing": "Closing Cycle"
+    },
+    "welcome": "Welcome back",
+    "subtitle": "Sign in to your account to continue",
+    "username": "Account",
+    "usernamePlaceholder": "Enter your account",
+    "usernameRequired": "Please enter your account",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "passwordRequired": "Please enter your password",
+    "remember": "Remember account",
+    "submit": "Sign in",
+    "submitting": "Signing in...",
+    "tenantDefault": "Default Tenant",
+    "tenantPrefix": "Tenant",
+    "step2Title": "Choose your organization",
+    "step2Subtitle": "Your account belongs to multiple organizations. Pick one to enter",
+    "entering": "Entering...",
+    "backToStep1": "Back to sign in",
+    "currentOrg": "Current organization",
+    "ssoTitle": "SSO",
+    "ssoButton": "Sign in with Auth Center",
+    "ssoHint": "Sign in with your group auth center account",
+    "ssoCallbackTitle": "SSO Sign-in",
+    "ssoCallbackProcessing": "Signing in via auth center...",
+    "ssoCallbackFailed": "SSO sign-in failed",
+    "ssoBackLogin": "Back to password sign-in"
+  },
+  "topbar": {
+    "switchOrg": "Switch organization",
+    "orgSwitching": "Switching organization...",
+    "language": "Language",
+    "adminPortal": "Admin Portal",
+    "bizPortal": "Back to Business Portal",
+    "profile": "Profile",
+    "logout": "Sign out",
+    "notLoggedIn": "Not signed in"
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "basedata": {
+      "root": "Master Data",
+      "materials": "Materials",
+      "customers": "Customers",
+      "suppliers": "Suppliers",
+      "warehouses": "Warehouses",
+      "prices": "Price Center",
+      "supplierAdmit": "Supplier Admission",
+      "docChain": "Document Chain"
+    },
+    "purchase": {
+      "root": "Procurement",
+      "orders": "Purchase Orders",
+      "instock": "Purchase Receipts",
+      "returns": "Purchase Returns",
+      "requisitions": "Requisitions",
+      "rfqs": "RFQ",
+      "estimations": "Estimated Payables",
+      "supplierScore": "Supplier Rating"
+    },
+    "integration": {
+      "monitor": "Integration Monitor"
+    },
+    "sales": {
+      "root": "Sales",
+      "orders": "Sales Orders",
+      "outstock": "Sales Deliveries",
+      "returns": "Sales Returns",
+      "quotations": "Quotations",
+      "notices": "Delivery Notices"
+    },
+    "inventory": {
+      "root": "Inventory",
+      "stock": "On-hand Stock",
+      "move": "Stock Transfer",
+      "check": "Stock Counting",
+      "batch": "Batch Trace",
+      "tasks": "Warehouse Tasks",
+      "waves": "Wave Management",
+      "serials": "Serial Tracking"
+    },
+    "qc": {
+      "root": "Quality",
+      "inspects": "Inspections",
+      "rejects": "Rejected Items",
+      "templates": "Inspection Templates"
+    },
+    "finance": {
+      "root": "Finance",
+      "receivable": "Receivables",
+      "payable": "Payables",
+      "receipts": "Receipts",
+      "payments": "Payments",
+      "voucher": "GL Vouchers",
+      "periods": "Accounting Periods"
+    },
+    "cost": {
+      "root": "Costing",
+      "pricing": "Inventory Pricing",
+      "settle": "Month-end Closing",
+      "analysis": "Cost Analysis"
+    },
+    "mrp": {
+      "root": "Manufacturing",
+      "bom": "BOM Lists",
+      "mrp": "MRP Run",
+      "routings": "Routings",
+      "workorders": "Work Orders",
+      "dispatch": "Dispatch & Report"
+    },
+    "asset": {
+      "root": "Fixed Assets",
+      "cards": "Asset Cards",
+      "depreciation": "Depreciation"
+    },
+    "workflow": {
+      "root": "Approvals",
+      "todo": "My Tasks",
+      "defs": "Process Definitions",
+      "msgs": "Notifications"
+    },
+    "hr": {
+      "root": "HR",
+      "employees": "Employees",
+      "attendance": "Attendance",
+      "piecewage": "Piece-rate Payroll"
+    },
+    "equipment": {
+      "root": "Equipment",
+      "devices": "Equipment Ledger",
+      "maintains": "Maintenance"
+    },
+    "invoice": {
+      "root": "Invoicing",
+      "sales": "Sales Invoices",
+      "purchases": "Purchase Invoices"
+    },
+    "budget": {
+      "root": "Budgeting",
+      "plans": "Budget Plans",
+      "analysis": "Execution Analysis"
+    },
+    "print": {
+      "root": "Printing",
+      "center": "Print Center"
+    },
+    "report": {
+      "root": "Reports",
+      "dashboard": "Executive Cockpit",
+      "center": "Multi-dim Reports"
+    },
+    "org": {
+      "root": "Organization",
+      "factories": "Factory Profiles",
+      "transfers": "Inter-org Transfers"
+    }
+  },
+  "admin": {
+    "portal": "Admin Portal",
+    "system": "System",
+    "users": "Users",
+    "roles": "Roles",
+    "menus": "Menus",
+    "depts": "Departments",
+    "dicts": "Dictionaries",
+    "logs": "Operation Logs",
+    "tenants": "Tenants",
+    "loginLogs": "Login Logs",
+    "orgFactories": "Organization Factories",
+    "tenantProtected": "The default tenant is protected and cannot be disabled",
+    "notifyChannels": "Notify Channels"
+  },
+  "tenant": {
+    "id": "ID",
+    "code": "Code",
+    "name": "Name",
+    "contact": "Contact",
+    "phone": "Phone",
+    "status": "Status",
+    "expire": "Expire",
+    "remark": "Remark",
+    "createTime": "Created",
+    "action": "Action",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "enableConfirm": "Enable this tenant?",
+    "disableConfirm": "Disable this tenant? Its users will not be able to sign in",
+    "codeRequired": "Please enter the tenant code",
+    "codeRule": "2-40 chars: letters, digits, underscore or hyphen",
+    "nameRequired": "Please enter the tenant name",
+    "enabledCount": "Enabled tenants: {count}",
+    "defaultProtected": "Default tenant (code locked, cannot be disabled)"
+  },
+  "notify": {
+    "subtitle": "DingTalk/WeCom/webhook channels: todo push, approval result, group warning",
+    "channelName": "Channel Name",
+    "channelNamePlaceholder": "e.g. Purchasing Approval DingTalk Group",
+    "channelNameRequired": "Please enter the channel name",
+    "channelType": "Channel Type",
+    "channelTypeRequired": "Please select the channel type",
+    "events": "Event Subscription",
+    "noEvents": "No event subscribed",
+    "todoPush": "Todo Push",
+    "approvalResult": "Approval Result",
+    "warn": "Warning",
+    "mobileBaseUrl": "Mobile Base URL",
+    "mobileBaseUrlHint": "Push link = base URL + /m/approve/{taskId}, e.g. http://erp.example.com:5173",
+    "status": "Status",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "enableConfirm": "Enable this channel? Events will be pushed per subscription",
+    "disableConfirm": "Disable this channel? External push stops (in-site messages remain)",
+    "deleteConfirm": "Delete this channel? This cannot be undone",
+    "remark": "Remark",
+    "createTime": "Created At",
+    "action": "Action",
+    "webhookUrl": "Webhook URL",
+    "webhookUrlRequired": "Please enter the webhook URL",
+    "webhookUrlHint": "DingTalk custom robot or WeCom group robot webhook URL",
+    "maskedKeepHint": "Credentials are masked; leave as-is to keep original values",
+    "corpIdRequired": "Please enter the CorpId",
+    "agentIdRequired": "Please enter the AgentId",
+    "secretRequired": "Please enter the app secret",
+    "optional": "optional",
+    "tokenHint": "Callback verify token (optional)",
+    "aesKeyHint": "Callback AES key (optional)",
+    "test": "Test Send",
+    "testSent": "Test send finished",
+    "testHint": "A test markdown message will be sent via this channel",
+    "receiverUser": "Receiver",
+    "receiverUserRequired": "Please select a receiver",
+    "receiverUserPlaceholder": "Search user",
+    "receiverUserHint": "DingTalk/WeCom requires an external account binding (mobile) for the receiver",
+    "sendLog": "Send Logs",
+    "event": "Event",
+    "result": "Result",
+    "sendOk": "Success",
+    "sendFail": "Failure",
+    "receiver": "Receiver",
+    "title": "Title",
+    "cost": "Cost",
+    "sendTime": "Sent At",
+    "content": "Content/Error",
+    "binding": "User Bindings",
+    "addBinding": "Add Binding",
+    "bindingHint": "DingTalk/WeCom find users by binding: DingTalk stores mobile (auto-converted to userid); WeCom stores member userid; unbound users are skipped and fall back to in-site messages",
+    "user": "User",
+    "externalId": "External ID",
+    "externalIdRequired": "Please enter the external ID (mobile/userid)",
+    "externalIdHint": "DingTalk = mobile; WeCom = member userid (usually the mobile number)",
+    "deleteBindingConfirm": "Delete this binding?",
+    "hint": "Credentials are masked; failed sends retry once then fall back to in-site messages"
+  },
+  "common": {
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "audit": "Approve",
+    "search": "Search",
+    "export": "Export",
+    "save": "Save",
+    "cancel": "Cancel",
+    "success": "Success",
+    "failure": "Operation failed",
+    "confirm": "OK",
+    "detail": "Detail",
+    "reset": "Reset",
+    "loading": "Loading...",
+    "keywordPlaceholder": "Search by keyword"
+  },
+  "perm": {
+    "noPerm": "No permission for this action"
+  }
+}

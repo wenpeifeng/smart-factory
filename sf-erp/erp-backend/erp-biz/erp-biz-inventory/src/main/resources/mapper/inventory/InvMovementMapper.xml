@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  库存流水 SQL：流水分页 + 批次正溯/反溯（V411 二期新增）。
+  追溯只读 inv_movement 自身的 biz_type/biz_no（按约定不 JOIN 采购/销售业务实体），
+  来源单据由上层经 bizNo 自行关联。
+-->
+<mapper namespace="com.erp.inventory.mapper.InvMovementMapper">
+
+    <select id="selectMovementPage" resultType="com.erp.inventory.dto.vo.MovementVO">
+        SELECT v.id,
+               v.biz_type,
+               v.biz_id,
+               v.biz_no,
+               v.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               v.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               v.batch_no,
+               v.location_id,
+               l.code AS location_code,
+               v.qty,
+               v.remark,
+               v.create_time
+        FROM inv_movement v
+                 LEFT JOIN base_warehouse w ON w.id = v.warehouse_id
+                 LEFT JOIN base_material m ON m.id = v.material_id
+                 LEFT JOIN base_location l ON l.id = v.location_id
+        WHERE v.deleted = 0
+        <if test="q.bizType != null and q.bizType != ''">
+            AND v.biz_type = #{q.bizType}
+        </if>
+        <if test="q.beginDate != null">
+            AND v.create_time &gt;= #{q.beginDate}
+        </if>
+        <if test="q.endDate != null">
+            AND v.create_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        </if>
+        <if test="q.materialId != null">
+            AND v.material_id = #{q.materialId}
+        </if>
+        <if test="q.warehouseId != null">
+            AND v.warehouse_id = #{q.warehouseId}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (v.biz_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.name LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        ORDER BY v.id DESC
+    </select>
+
+    <!-- 批次反溯：入库流水（qty>0），按时间正序 -->
+    <select id="selectBackwardTrace" resultType="com.erp.inventory.dto.vo.TraceNodeVO">
+        SELECT v.id,
+               v.biz_type,
+               v.biz_id,
+               v.biz_no,
+               v.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               v.qty,
+               v.remark,
+               v.create_time
+        FROM inv_movement v
+                 LEFT JOIN base_warehouse w ON w.id = v.warehouse_id
+        WHERE v.deleted = 0
+          AND v.material_id = #{materialId}
+          AND v.batch_no = #{batchNo}
+          AND v.qty &gt; 0
+        ORDER BY v.id ASC
+    </select>
+
+    <!-- 批次正溯：出库流水（qty<0），按时间正序 -->
+    <select id="selectForwardTrace" resultType="com.erp.inventory.dto.vo.TraceNodeVO">
+        SELECT v.id,
+               v.biz_type,
+               v.biz_id,
+               v.biz_no,
+               v.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               v.qty,
+               v.remark,
+               v.create_time
+        FROM inv_movement v
+                 LEFT JOIN base_warehouse w ON w.id = v.warehouse_id
+        WHERE v.deleted = 0
+          AND v.material_id = #{materialId}
+          AND v.batch_no = #{batchNo}
+          AND v.qty &lt; 0
+        ORDER BY v.id ASC
+    </select>
+</mapper>

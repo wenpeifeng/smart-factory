@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  组织间调拨单 SQL：分页（工厂/仓库回显 + 明细聚合）/ 头详情 / 明细行 / 线路统计 / 物料点查。
+  base_warehouse / base_material 为约定表，只读 JOIN。
+-->
+<mapper namespace="com.erp.org.mapper.OrgTransferMapper">
+
+    <!-- 明细聚合子查询（行数/数量/金额合计） -->
+    <sql id="detailAgg">
+        (SELECT d.transfer_id,
+                COUNT(*)          AS line_count,
+                COALESCE(SUM(d.qty), 0)            AS total_qty,
+                COALESCE(SUM(d.settle_amount), 0)  AS total_amount
+           FROM org_transfer_detail d
+          WHERE d.deleted = 0
+          GROUP BY d.transfer_id)
+    </sql>
+
+    <!-- 调拨单分页 -->
+    <select id="pageTransfer" resultType="com.erp.org.dto.vo.TransferVO">
+        SELECT t.id,
+               t.transfer_no       AS transferNo,
+               t.from_factory_id   AS fromFactoryId,
+               ff.name             AS fromFactoryName,
+               t.from_warehouse_id AS fromWarehouseId,
+               fw.name             AS fromWarehouseName,
+               t.to_factory_id     AS toFactoryId,
+               tf.name             AS toFactoryName,
+               t.to_warehouse_id   AS toWarehouseId,
+               tw.name             AS toWarehouseName,
+               t.status,
+               t.audit_time        AS auditTime,
+               t.remark,
+               t.create_time       AS createTime,
+               COALESCE(agg.line_count, 0)  AS lineCount,
+               COALESCE(agg.total_qty, 0)   AS totalQty,
+               COALESCE(agg.total_amount, 0) AS totalAmount
+        FROM org_transfer t
+        LEFT JOIN org_factory ff ON ff.id = t.from_factory_id AND ff.deleted = 0
+        LEFT JOIN org_factory tf ON tf.id = t.to_factory_id AND tf.deleted = 0
+        LEFT JOIN base_warehouse fw ON fw.id = t.from_warehouse_id AND fw.deleted = 0
+        LEFT JOIN base_warehouse tw ON tw.id = t.to_warehouse_id AND tw.deleted = 0
+        LEFT JOIN <include refid="detailAgg"/> agg ON agg.transfer_id = t.id
+        WHERE t.deleted = 0
+        <if test="q.status != null">
+            AND t.status = #{q.status}
+        </if>
+        <if test="q.fromFactoryId != null">
+            AND t.from_factory_id = #{q.fromFactoryId}
+        </if>
+        <if test="q.toFactoryId != null">
+            AND t.to_factory_id = #{q.toFactoryId}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (t.transfer_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR ff.name LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR tf.name LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        <if test="q.beginDate != null and q.beginDate != ''">
+            AND t.create_time &gt;= CONCAT(#{q.beginDate}, ' 00:00:00')
+        </if>
+        <if test="q.endDate != null and q.endDate != ''">
+            AND t.create_time &lt;= CONCAT(#{q.endDate}, ' 23:59:59')
+        </if>
+        ORDER BY t.id DESC
+    </select>
+
+    <!-- 调拨单头详情 -->
+    <select id="selectHead" resultType="com.erp.org.dto.vo.TransferVO">
+        SELECT t.id,
+               t.transfer_no       AS transferNo,
+               t.from_factory_id   AS fromFactoryId,
+               ff.name             AS fromFactoryName,
+               t.from_warehouse_id AS fromWarehouseId,
+               fw.name             AS fromWarehouseName,
+               t.to_factory_id     AS toFactoryId,
+               tf.name             AS toFactoryName,
+               t.to_warehouse_id   AS toWarehouseId,
+               tw.name             AS toWarehouseName,
+               t.status,
+               t.audit_time        AS auditTime,
+               t.remark,
+               t.create_time       AS createTime
+        FROM org_transfer t
+        LEFT JOIN org_factory ff ON ff.id = t.from_factory_id AND ff.deleted = 0
+        LEFT JOIN org_factory tf ON tf.id = t.to_factory_id AND tf.deleted = 0
+        LEFT JOIN base_warehouse fw ON fw.id = t.from_warehouse_id AND fw.deleted = 0
+        LEFT JOIN base_warehouse tw ON tw.id = t.to_warehouse_id AND tw.deleted = 0
+        WHERE t.deleted = 0
+          AND t.id = #{id}
+    </select>
+
+    <!-- 调拨单明细行 -->
+    <select id="selectLines" resultType="com.erp.org.dto.vo.TransferVO$LineVO">
+        SELECT d.id,
+               d.material_id    AS materialId,
+               m.code           AS materialCode,
+               m.name           AS materialName,
+               d.qty,
+               d.cost_price     AS costPrice,
+               d.settle_price   AS settlePrice,
+               d.settle_amount  AS settleAmount
+        FROM org_transfer_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE d.deleted = 0
+          AND d.transfer_id = #{transferId}
+        ORDER BY d.id
+    </select>
+
+    <!-- 期间调拨金额按线路汇总（已审核单，审核时间落在 [from, to] 闭区间） -->
+    <select id="statisticsLine" resultType="com.erp.org.dto.vo.TransferLineStatVO">
+        SELECT t.from_factory_id  AS fromFactoryId,
+               ff.name            AS fromFactoryName,
+               t.to_factory_id    AS toFactoryId,
+               tf.name            AS toFactoryName,
+               COUNT(DISTINCT t.id)       AS transferCount,
+               COALESCE(SUM(d.qty), 0)            AS totalQty,
+               COALESCE(SUM(d.settle_amount), 0)  AS totalAmount
+        FROM org_transfer t
+        JOIN org_transfer_detail d
+          ON d.transfer_id = t.id AND d.deleted = 0
+        LEFT JOIN org_factory ff ON ff.id = t.from_factory_id AND ff.deleted = 0
+        LEFT JOIN org_factory tf ON tf.id = t.to_factory_id AND tf.deleted = 0
+        WHERE t.deleted = 0
+          AND t.status = 1
+          AND t.audit_time &gt;= #{from}
+          AND t.audit_time &lt; DATE_ADD(#{to}, INTERVAL 1 DAY)
+        GROUP BY t.from_factory_id, ff.name, t.to_factory_id, tf.name
+        ORDER BY totalAmount DESC
+    </select>
+
+    <!-- 物料存在性点查（调拨/价目保存校验） -->
+    <select id="countMaterialExists" resultType="int">
+        SELECT COUNT(*)
+        FROM base_material
+        WHERE id = #{materialId}
+          AND deleted = 0
+    </select>
+</mapper>

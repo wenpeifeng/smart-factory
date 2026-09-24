@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 成本模块跨模块集成：只按约定表结构读写（inv_movement / pur_instock_detail /
+     mrp_work_order / mrp_material_issue(_item) / hr_piece_wage_detail /
+     fin_voucher(_entry) / fin_subject / base_material），不建物理外键 -->
+<mapper namespace="com.erp.cost.mapper.CostIntegrationMapper">
+
+    <!-- toPeriod（含）之前的全部库存流水（sync 重放数据源） -->
+    <select id="selectMovements" resultType="com.erp.cost.dto.raw.MovementRaw">
+        SELECT id,
+               biz_type,
+               biz_id,
+               biz_no,
+               warehouse_id,
+               material_id,
+               qty,
+               create_time AS move_time,
+               DATE_FORMAT(create_time, '%Y%m') AS period
+        FROM inv_movement
+        WHERE deleted = 0
+          AND DATE_FORMAT(create_time, '%Y%m') &lt;= #{toPeriod}
+        ORDER BY create_time, id
+    </select>
+
+    <!-- 采购入库单某物料的入库金额合计（PUR_IN 计价金额来源） -->
+    <select id="sumPurchaseInAmount" resultType="java.math.BigDecimal">
+        SELECT IFNULL(SUM(d.amount), 0)
+        FROM pur_instock_detail d
+        WHERE d.deleted = 0
+          AND d.instock_id = #{instockId}
+          AND d.material_id = #{materialId}
+    </select>
+
+    <!-- 生产订单分页（带成品物料回显） -->
+    <select id="selectWorkOrderPage" resultType="com.erp.cost.dto.raw.WorkOrderRaw">
+        SELECT w.id,
+               w.order_no,
+               w.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               w.qty,
+               w.finish_qty,
+               w.status,
+               w.plan_start_date,
+               w.plan_end_date
+        FROM mrp_work_order w
+                 LEFT JOIN base_material m ON m.id = w.material_id
+        WHERE w.deleted = 0
+        <if test="keyword != null">
+            AND (w.order_no LIKE CONCAT('%', #{keyword}, '%')
+                OR m.code LIKE CONCAT('%', #{keyword}, '%')
+                OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+            AND w.status = #{status}
+        </if>
+        ORDER BY w.id DESC
+    </select>
+
+    <!-- 按 ID 精确取生产订单 -->
+    <select id="selectWorkOrderById" resultType="com.erp.cost.dto.raw.WorkOrderRaw">
+        SELECT w.id,
+               w.order_no,
+               w.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               w.qty,
+               w.finish_qty,
+               w.status,
+               w.plan_start_date,
+               w.plan_end_date
+        FROM mrp_work_order w
+                 LEFT JOIN base_material m ON m.id = w.material_id
+        WHERE w.deleted = 0 AND w.id = #{id}
+    </select>
+
+    <!-- 已审核领料明细（工单×物料 汇总粒度，实领数量） -->
+    <select id="selectIssueItems" resultType="com.erp.cost.dto.raw.IssueItemRaw">
+        SELECT i.work_order_id,
+               ii.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               SUM(ii.actual_qty) AS qty
+        FROM mrp_material_issue i
+                 JOIN mrp_material_issue_item ii ON ii.issue_id = i.id AND ii.deleted = 0
+                 LEFT JOIN base_material m ON m.id = ii.material_id
+        WHERE i.deleted = 0
+          AND i.status = 'AUDITED'
+          AND i.work_order_id IN
+        <foreach collection="workOrderIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY i.work_order_id, ii.material_id, m.code, m.name
+    </select>
+
+    <!-- hr_piece_wage_detail 约定表存在性（HR 二期并行开发，未建成=0） -->
+    <select id="countHrWageTable" resultType="int">
+        SELECT COUNT(*)
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'hr_piece_wage_detail'
+    </select>
+
+    <!-- 工单计件工资合计（调用前必须确认表存在） -->
+    <select id="selectWageTotals" resultType="com.erp.cost.dto.raw.WageRaw">
+        SELECT w.work_order_id,
+               SUM(w.amount) AS amount,
+               COUNT(*) AS line_count
+        FROM hr_piece_wage_detail w
+        WHERE w.deleted = 0
+          AND w.work_order_id IN
+        <foreach collection="workOrderIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY w.work_order_id
+    </select>
+
+    <!-- 工单计件工资明细行（调用前必须确认表存在） -->
+    <select id="selectWageDetails" resultType="com.erp.cost.dto.raw.WageRaw">
+        SELECT w.id,
+               w.work_order_id,
+               w.employee_id,
+               w.amount
+        FROM hr_piece_wage_detail w
+        WHERE w.deleted = 0
+          AND w.work_order_id = #{workOrderId}
+        ORDER BY w.id
+    </select>
+
+    <!-- 按编码取启用科目（结账凭证借贷科目解析） -->
+    <select id="selectSubjects" resultType="com.erp.cost.dto.raw.SubjectRaw">
+        SELECT id, code, name
+        FROM fin_subject
+        WHERE deleted = 0
+          AND status = 1
+          AND code IN
+        <foreach collection="codes" item="c" open="(" separator="," close=")">
+            #{c}
+        </foreach>
+    </select>
+
+    <!-- 结账自动凭证（按 fin_voucher 约定结构 INSERT，DRAFT 待会计复核） -->
+    <insert id="insertVoucher" parameterType="com.erp.cost.dto.raw.VoucherInsertParam"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fin_voucher (voucher_no, voucher_date, word, attachment_count,
+                                 total_debit, total_credit, status, remark,
+                                 create_by, create_time, update_by, update_time, deleted)
+        VALUES (#{voucherNo}, #{voucherDate}, #{word}, 0,
+                #{totalDebit}, #{totalCredit}, #{status}, #{remark},
+                #{userId}, NOW(), #{userId}, NOW(), 0)
+    </insert>
+
+    <!-- 结账自动凭证分录（借贷单边金额） -->
+    <insert id="insertVoucherEntry" parameterType="com.erp.cost.dto.raw.VoucherEntryInsertParam">
+        INSERT INTO fin_voucher_entry (voucher_id, line_no, summary, subject_id,
+                                       debit_amount, credit_amount,
+                                       create_by, create_time, update_by, update_time, deleted)
+        VALUES (#{voucherId}, #{lineNo}, #{summary}, #{subjectId},
+                #{debitAmount}, #{creditAmount},
+                #{userId}, NOW(), #{userId}, NOW(), 0)
+    </insert>
+</mapper>

@@ -1,0 +1,25 @@
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+
+# ===== Node / 前端 =====
+node_modules/
+dist/
+*.local
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# ===== 日志 =====
+script/logs/
+*.log
+
+# ===== 环境与密钥 =====
+.env
+*.pem

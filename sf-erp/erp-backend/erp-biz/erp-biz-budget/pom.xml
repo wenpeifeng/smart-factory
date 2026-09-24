@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- erp-biz-budget：预算管理(编制/控制/执行分析) -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>erp-biz-budget</artifactId>
+    <name>erp-biz-budget</name>
+    <description>预算管理：预算编制(部门x期间x科目)/预算控制(付款/费用超预算管控)/执行分析</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-framework</artifactId>
+        </dependency>
+        <!-- @OperLog 操作日志注解（切面在 erp-platform-system，bootstrap 统一装配） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-system</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-basedata</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 不合格品处置关联查询：分页/详情带出物料信息；sources 汇总可处置余额（不合格数-已处置）。 -->
+<mapper namespace="com.erp.qc.mapper.QcRejectMapper">
+
+    <sql id="selectRejectColumns">
+        SELECT r.id,
+               r.reject_no,
+               r.inspect_id,
+               r.inspect_no,
+               r.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               m.spec,
+               u.name AS unit,
+               r.qty,
+               r.decision,
+               r.dispose_remark,
+               r.approver,
+               r.create_time
+        FROM qc_reject r
+        LEFT JOIN base_material m ON m.id = r.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+    </sql>
+
+    <select id="selectRejectPage" resultType="com.erp.qc.dto.vo.QcRejectVO">
+        <include refid="selectRejectColumns"/>
+        <where>
+            r.deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (r.reject_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR r.inspect_no LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.materialId != null">AND r.material_id = #{q.materialId}</if>
+            <if test="q.decision != null">AND r.decision = #{q.decision}</if>
+        </where>
+        ORDER BY r.id DESC
+    </select>
+
+    <select id="selectRejectById" resultType="com.erp.qc.dto.vo.QcRejectVO">
+        <include refid="selectRejectColumns"/>
+        WHERE r.id = #{id} AND r.deleted = 0
+    </select>
+
+    <!-- 可生成处置单的检验单：已检验 + 不合格数>0 + 扣除已处置仍有余额 -->
+    <select id="selectRejectSources" resultType="com.erp.qc.dto.vo.RejectSourceVO">
+        SELECT i.id                AS inspectId,
+               i.inspect_no        AS inspectNo,
+               m.code              AS materialCode,
+               m.name              AS materialName,
+               i.unqualified_qty   AS unqualifiedQty,
+               COALESCE((SELECT SUM(r.qty) FROM qc_reject r
+                         WHERE r.inspect_id = i.id AND r.deleted = 0), 0) AS disposedQty,
+               i.unqualified_qty - COALESCE((SELECT SUM(r.qty) FROM qc_reject r
+                                            WHERE r.inspect_id = i.id AND r.deleted = 0), 0) AS rejectableQty
+        FROM qc_inspect i
+        LEFT JOIN base_material m ON m.id = i.material_id AND m.deleted = 0
+        WHERE i.status = 10 AND i.deleted = 0 AND i.unqualified_qty > 0
+        HAVING rejectableQty > 0
+        ORDER BY i.id DESC
+        LIMIT 200
+    </select>
+</mapper>

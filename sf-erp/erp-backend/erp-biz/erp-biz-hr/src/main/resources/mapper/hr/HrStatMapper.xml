@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  人力资源模块报表/聚合 SQL —— hr_ 自有表为主，仅回显列 JOIN sys_dept / base_material（只读）。
+-->
+<mapper namespace="com.erp.hr.mapper.HrStatMapper">
+
+    <!-- 考勤导入：uk(employee_id, att_date) 冲突覆盖（同月重复导入幂等），并复活逻辑删除行 -->
+    <insert id="upsertAttendance">
+        INSERT INTO hr_attendance
+            (employee_id, att_date, status, remark, create_by, create_time, update_by, update_time, deleted)
+        VALUES
+            (#{employeeId}, #{attDate}, #{status}, #{remark}, #{userId}, NOW(), #{userId}, NOW(), 0)
+        ON DUPLICATE KEY UPDATE
+            status      = VALUES(status),
+            remark      = VALUES(remark),
+            update_by   = VALUES(update_by),
+            update_time = NOW(),
+            deleted     = 0
+    </insert>
+
+    <!-- 计件归集"整单重建"：物理清除本期间明细（uk 会被逻辑删除行占用，派生数据可再生） -->
+    <delete id="deletePeriodDetails">
+        DELETE FROM hr_piece_wage_detail
+        WHERE period_id = #{periodId}
+    </delete>
+
+    <!-- 考勤明细分页 -->
+    <select id="pageAttendance" resultType="com.erp.hr.dto.vo.AttendanceVO">
+        SELECT a.id,
+               a.employee_id AS employeeId,
+               e.emp_no      AS empNo,
+               e.name        AS employeeName,
+               d.name        AS deptName,
+               a.att_date    AS attDate,
+               a.status,
+               a.remark,
+               a.update_time AS updateTime
+        FROM hr_attendance a
+        JOIN hr_employee e ON e.id = a.employee_id AND e.deleted = 0
+        LEFT JOIN sys_dept d ON d.id = e.dept_id AND d.deleted = 0
+        WHERE a.deleted = 0
+        <if test="employeeId != null">
+            AND a.employee_id = #{employeeId}
+        </if>
+        <if test="from != null">
+            AND a.att_date &gt;= #{from}
+        </if>
+        <if test="to != null">
+            AND a.att_date &lt;= #{to}
+        </if>
+        ORDER BY a.att_date DESC, a.id DESC
+    </select>
+
+    <!-- 考勤月度汇总：按员工统计各状态天数（到岗=正常+迟到） -->
+    <select id="attendanceSummary" resultType="com.erp.hr.dto.vo.AttendanceSummaryVO">
+        SELECT e.id   AS employeeId,
+               e.emp_no AS empNo,
+               e.name  AS employeeName,
+               d.name  AS deptName,
+               IFNULL(SUM(a.status = 'NORMAL'), 0)   AS normalDays,
+               IFNULL(SUM(a.status = 'ABSENT'), 0)   AS absentDays,
+               IFNULL(SUM(a.status = 'LATE'), 0)     AS lateDays,
+               IFNULL(SUM(a.status = 'LEAVE'), 0)    AS leaveDays,
+               IFNULL(SUM(a.status = 'OVERTIME'), 0) AS overtimeDays,
+               IFNULL(SUM(a.status IN ('NORMAL', 'LATE')), 0) AS attendedDays
+        FROM hr_attendance a
+        JOIN hr_employee e ON e.id = a.employee_id AND e.deleted = 0
+        LEFT JOIN sys_dept d ON d.id = e.dept_id AND d.deleted = 0
+        WHERE a.deleted = 0
+          AND DATE_FORMAT(a.att_date, '%Y-%m') = #{month}
+        GROUP BY e.id, e.emp_no, e.name, d.name
+        ORDER BY e.emp_no
+    </select>
+
+    <!-- 计件期间分页（附明细数/合计金额） -->
+    <select id="pagePieceWages" resultType="com.erp.hr.dto.vo.PieceWageVO">
+        SELECT w.id,
+               w.period,
+               w.status,
+               w.remark,
+               w.create_time AS createTime,
+               IFNULL(t.detail_count, 0) AS detailCount,
+               IFNULL(t.total_amount, 0) AS totalAmount
+        FROM hr_piece_wage w
+        LEFT JOIN (
+            SELECT period_id, COUNT(*) AS detail_count, SUM(amount) AS total_amount
+            FROM hr_piece_wage_detail
+            WHERE deleted = 0
+            GROUP BY period_id
+        ) t ON t.period_id = w.id
+        WHERE w.deleted = 0
+        ORDER BY w.period DESC
+    </select>
+
+    <!-- 计件明细分页（员工/订单号/物料回显，来源可追溯） -->
+    <select id="pagePieceWageDetails" resultType="com.erp.hr.dto.vo.PieceWageDetailVO">
+        SELECT pd.id,
+               pd.period_id     AS periodId,
+               w.period,
+               pd.employee_id   AS employeeId,
+               e.emp_no         AS empNo,
+               e.name           AS employeeName,
+               pd.work_order_id AS workOrderId,
+               pd.work_order_no AS workOrderNo,
+               pd.material_id   AS materialId,
+               m.code           AS materialCode,
+               m.name           AS materialName,
+               pd.process_name  AS processName,
+               pd.qty,
+               pd.unit_price    AS unitPrice,
+               pd.amount,
+               pd.create_time   AS createTime
+        FROM hr_piece_wage_detail pd
+        JOIN hr_piece_wage w ON w.id = pd.period_id AND w.deleted = 0
+        LEFT JOIN hr_employee e ON e.id = pd.employee_id AND e.deleted = 0
+        LEFT JOIN base_material m ON m.id = pd.material_id AND m.deleted = 0
+        WHERE pd.deleted = 0
+          AND pd.period_id = #{periodId}
+        <if test="employeeId != null">
+            AND pd.employee_id = #{employeeId}
+        </if>
+        ORDER BY pd.id DESC
+    </select>
+
+    <!-- 计件按员工合计 -->
+    <select id="pieceWageEmployeeSummary" resultType="com.erp.hr.dto.vo.PieceWageEmployeeSummaryVO">
+        SELECT pd.employee_id AS employeeId,
+               e.emp_no       AS empNo,
+               e.name         AS employeeName,
+               COUNT(*)                AS detailCount,
+               IFNULL(SUM(pd.qty), 0)    AS totalQty,
+               IFNULL(SUM(pd.amount), 0) AS totalAmount
+        FROM hr_piece_wage_detail pd
+        LEFT JOIN hr_employee e ON e.id = pd.employee_id AND e.deleted = 0
+        WHERE pd.deleted = 0
+          AND pd.period_id = #{periodId}
+        GROUP BY pd.employee_id, e.emp_no, e.name
+        ORDER BY totalAmount DESC
+    </select>
+
+    <!--
+      工资汇总底稿：在职 ∪ 当月有考勤/计件数据 的员工；
+      加班费/缺勤扣款/应发合计在 Java 侧 DECIMAL 计算（HALF_UP 2位）。
+    -->
+    <select id="wageSummaryRows" resultType="com.erp.hr.dto.vo.WageSummaryVO">
+        SELECT e.id      AS employeeId,
+               e.emp_no  AS empNo,
+               e.name    AS employeeName,
+               d.name    AS deptName,
+               e.base_salary AS baseSalary,
+               IFNULL(att.overtime_days, 0) AS overtimeDays,
+               IFNULL(att.absent_days, 0)   AS absentDays,
+               IFNULL(pw.piece_amount, 0)   AS pieceAmount
+        FROM hr_employee e
+        LEFT JOIN sys_dept d ON d.id = e.dept_id AND d.deleted = 0
+        LEFT JOIN (
+            SELECT employee_id,
+                   SUM(status = 'OVERTIME') AS overtime_days,
+                   SUM(status = 'ABSENT')   AS absent_days
+            FROM hr_attendance
+            WHERE deleted = 0 AND DATE_FORMAT(att_date, '%Y-%m') = #{month}
+            GROUP BY employee_id
+        ) att ON att.employee_id = e.id
+        LEFT JOIN (
+            SELECT pd.employee_id, SUM(pd.amount) AS piece_amount
+            FROM hr_piece_wage_detail pd
+            JOIN hr_piece_wage w ON w.id = pd.period_id AND w.deleted = 0
+            WHERE pd.deleted = 0 AND w.period = #{month}
+            GROUP BY pd.employee_id
+        ) pw ON pw.employee_id = e.id
+        WHERE e.deleted = 0
+          AND (e.status = 'ON_JOB' OR att.employee_id IS NOT NULL OR pw.employee_id IS NOT NULL)
+        ORDER BY e.emp_no
+    </select>
+</mapper>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      erp-biz-basedata：基础资料(物料/客户/供应商/仓库/计量单位/结算方式)
+      分层约定: entity / mapper / service / service.impl / controller / dto
+    -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>erp-biz-basedata</artifactId>
+    <name>erp-biz-basedata</name>
+    <description>基础资料(物料/客户/供应商/仓库/计量单位/结算方式)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-framework</artifactId>
+        </dependency>
+        <!-- @OperLog 操作日志注解（切面在 erp-platform-system，bootstrap 统一装配） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-system</artifactId>
+        </dependency>
+        <!-- V131 价格中心：特价审批接入 WorkflowService.startFlow（platform 层依赖，允许） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-workflow</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

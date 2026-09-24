@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      erp-biz-purchase：采购管理(采购订单/采购入库/采购退货/供应商对账)
+      分层约定: entity / mapper / service / service.impl / controller / dto
+    -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>erp-biz-purchase</artifactId>
+    <name>erp-biz-purchase</name>
+    <description>采购管理(采购订单/采购入库/采购退货/供应商对账)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-framework</artifactId>
+        </dependency>
+        <!-- @OperLog 操作日志注解（切面在 erp-platform-system，bootstrap 统一装配） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-system</artifactId>
+        </dependency>
+        <!-- 依赖基础资料模块(物料/仓库等公共主数据) -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-basedata</artifactId>
+        </dependency>
+        <!-- 跨模块业务接线(依赖方向单向: purchase -> {inventory,cost,qc,workflow})：
+             库存统一走 StockService、成本实时归集走 CostService、
+             入库审核前 QC 卡点、订单审核接审批流 WorkflowService -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-inventory</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-cost</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-qc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-workflow</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

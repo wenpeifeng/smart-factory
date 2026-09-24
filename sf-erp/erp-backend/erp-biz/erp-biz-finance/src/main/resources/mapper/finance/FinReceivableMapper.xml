@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  应收核销条件 UPDATE：单条 SQL 原子完成「累加已核销 + 联动状态」，
+  WHERE 兜底核销额不得超过未核销余额（amount - settled_amount >= 本次核销额），
+  并发场景下多笔收款核销同一应收也不会超核销（影响行数 0 → 调用方抛异常回滚）。
+-->
+<mapper namespace="com.erp.finance.mapper.FinReceivableMapper">
+
+    <update id="applyVerify">
+        UPDATE fin_receivable
+        SET settled_amount = settled_amount + #{amount},
+            status         = IF(settled_amount + #{amount} >= amount, 'SETTLED', 'PARTIAL')
+        WHERE id = #{id}
+          AND book_id = #{bookId}
+          AND deleted = 0
+          AND amount - settled_amount &gt;= #{amount}
+    </update>
+</mapper>

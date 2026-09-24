@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  组织间调拨价目 SQL：分页（物料/工厂名称回显）+ 线路现行价目点查。
+  base_material / org_factory 为约定表（前者 basedata 模块），只读 JOIN。
+-->
+<mapper namespace="com.erp.org.mapper.OrgTransferPriceMapper">
+
+    <!-- 价目分页 -->
+    <select id="pagePrice" resultType="com.erp.org.dto.vo.TransferPriceVO">
+        SELECT p.id,
+               p.material_id      AS materialId,
+               m.code             AS materialCode,
+               m.name             AS materialName,
+               p.from_factory_id  AS fromFactoryId,
+               ff.name            AS fromFactoryName,
+               p.to_factory_id    AS toFactoryId,
+               tf.name            AS toFactoryName,
+               p.markup_type      AS markupType,
+               p.markup_value     AS markupValue,
+               p.status,
+               p.remark,
+               p.create_time      AS createTime
+        FROM org_transfer_price p
+        LEFT JOIN base_material m ON m.id = p.material_id AND m.deleted = 0
+        LEFT JOIN org_factory ff ON ff.id = p.from_factory_id AND ff.deleted = 0
+        LEFT JOIN org_factory tf ON tf.id = p.to_factory_id AND tf.deleted = 0
+        WHERE p.deleted = 0
+        <if test="q.materialId != null">
+            AND p.material_id = #{q.materialId}
+        </if>
+        <if test="q.fromFactoryId != null">
+            AND p.from_factory_id = #{q.fromFactoryId}
+        </if>
+        <if test="q.toFactoryId != null">
+            AND p.to_factory_id = #{q.toFactoryId}
+        </if>
+        <if test="q.status != null">
+            AND p.status = #{q.status}
+        </if>
+        ORDER BY p.id DESC
+    </select>
+
+    <!-- 线路现行价目：同线路存在多条启用价目时取最新一条（id 最大） -->
+    <select id="selectEffectiveRule" resultType="com.erp.org.entity.OrgTransferPrice">
+        SELECT id, material_id, from_factory_id, to_factory_id,
+               markup_type, markup_value, status, remark
+        FROM org_transfer_price
+        WHERE deleted = 0
+          AND status = 1
+          AND material_id = #{materialId}
+          AND from_factory_id = #{fromFactoryId}
+          AND to_factory_id = #{toFactoryId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+</mapper>

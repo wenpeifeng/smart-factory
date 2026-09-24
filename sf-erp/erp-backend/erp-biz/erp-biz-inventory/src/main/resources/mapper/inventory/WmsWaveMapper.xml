@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- WMS 波次 SQL（V421）：波次分页（含波内任务进度统计）。 -->
+<mapper namespace="com.erp.inventory.mapper.WmsWaveMapper">
+
+    <select id="selectWavePage" resultType="com.erp.inventory.dto.vo.WmsWaveVO">
+        SELECT v.id,
+               v.wave_no,
+               v.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               v.status,
+               COALESCE(stat.task_count, 0) AS task_count,
+               COALESCE(stat.done_count, 0) AS done_count,
+               COALESCE(stat.total_qty, 0) AS total_qty,
+               v.finish_time,
+               v.remark,
+               v.create_time
+        FROM wms_wave v
+                 LEFT JOIN base_warehouse w ON w.id = v.warehouse_id
+                 LEFT JOIN (SELECT wave_id,
+                                   COUNT(*) AS task_count,
+                                   SUM(status = 30) AS done_count,
+                                   SUM(qty) AS total_qty
+                            FROM wms_task WHERE deleted = 0 AND wave_id IS NOT NULL
+                            GROUP BY wave_id) stat ON stat.wave_id = v.id
+        WHERE v.deleted = 0
+        <if test="q.status != null">
+            AND v.status = #{q.status}
+        </if>
+        <if test="q.warehouseId != null">
+            AND v.warehouse_id = #{q.warehouseId}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (v.wave_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR v.remark LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        ORDER BY v.id DESC
+    </select>
+</mapper>

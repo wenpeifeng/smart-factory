@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  单据打印中心只读聚合 SQL（5 类模板：sal_order / delivery_note / pur_order / statement / voucher）。
+  约定（与 ReportMapper.xml 一致）：
+  * 不 import 业务模块代码，按各模块建表脚本约定列 JOIN；全部过滤 deleted = 0；
+  * 打印是单据自身呈现：主子表按单据 id 直查（草稿也可打印），仅对账单按已审核出库汇总；
+  * 制单/审核人取 sys_user.nickname（回退 username），create_by/audit_by = 0 时自然为 NULL；
+  * 金额 COALESCE 兜底；日期 DATE_FORMAT 直接输出 yyyy-MM-dd；
+  * 列表页 keyword 同时匹配单号与往来单位名（LIKE '%kw%'，走单号/名称前缀索引 + 回表，量级可控）。
+-->
+<mapper namespace="com.erp.report.mapper.PrintMapper">
+
+    <!-- ==================== 打印单据选择列表 ==================== -->
+
+    <sql id="salOrderListWhere">
+        FROM sal_order o
+        LEFT JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        LEFT JOIN sys_user u ON u.id = o.create_by AND u.deleted = 0
+        WHERE o.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (o.order_no LIKE CONCAT('%', #{keyword}, '%') OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="countSalOrders" resultType="long">
+        SELECT COUNT(*) <include refid="salOrderListWhere"/>
+    </select>
+
+    <select id="listSalOrders" resultType="map">
+        SELECT o.id,
+               o.order_no                                   AS billNo,
+               c.name                                       AS partyName,
+               DATE_FORMAT(o.order_date, '%Y-%m-%d')        AS billDate,
+               o.total_amount                               AS amount,
+               o.status                                     AS status,
+               IFNULL(NULLIF(u.nickname, ''), u.username)   AS makerName
+        <include refid="salOrderListWhere"/>
+        ORDER BY o.order_date DESC, o.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <sql id="outstockListWhere">
+        FROM sal_outstock o
+        LEFT JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        LEFT JOIN sys_user u ON u.id = o.create_by AND u.deleted = 0
+        WHERE o.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (o.out_no LIKE CONCAT('%', #{keyword}, '%') OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="countOutstocks" resultType="long">
+        SELECT COUNT(*) <include refid="outstockListWhere"/>
+    </select>
+
+    <select id="listOutstocks" resultType="map">
+        SELECT o.id,
+               o.out_no                                     AS billNo,
+               c.name                                       AS partyName,
+               DATE_FORMAT(o.out_date, '%Y-%m-%d')          AS billDate,
+               o.total_amount                               AS amount,
+               o.status                                     AS status,
+               IFNULL(NULLIF(u.nickname, ''), u.username)   AS makerName
+        <include refid="outstockListWhere"/>
+        ORDER BY o.out_date DESC, o.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <sql id="purOrderListWhere">
+        FROM pur_order o
+        LEFT JOIN base_supplier s ON s.id = o.supplier_id AND s.deleted = 0
+        LEFT JOIN sys_user u ON u.id = o.create_by AND u.deleted = 0
+        WHERE o.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (o.order_no LIKE CONCAT('%', #{keyword}, '%') OR s.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="countPurOrders" resultType="long">
+        SELECT COUNT(*) <include refid="purOrderListWhere"/>
+    </select>
+
+    <select id="listPurOrders" resultType="map">
+        SELECT o.id,
+               o.order_no                                   AS billNo,
+               s.name                                       AS partyName,
+               DATE_FORMAT(o.order_date, '%Y-%m-%d')        AS billDate,
+               o.total_amount                               AS amount,
+               o.status                                     AS status,
+               IFNULL(NULLIF(u.nickname, ''), u.username)   AS makerName
+        <include refid="purOrderListWhere"/>
+        ORDER BY o.order_date DESC, o.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <sql id="voucherListWhere">
+        FROM fin_voucher v
+        LEFT JOIN sys_user u ON u.id = v.create_by AND u.deleted = 0
+        WHERE v.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND v.voucher_no LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+    </sql>
+
+    <select id="countVouchers" resultType="long">
+        SELECT COUNT(*) <include refid="voucherListWhere"/>
+    </select>
+
+    <select id="listVouchers" resultType="map">
+        SELECT v.id,
+               v.voucher_no                                 AS billNo,
+               IFNULL(NULLIF(u.nickname, ''), u.username)   AS partyName,
+               DATE_FORMAT(v.voucher_date, '%Y-%m-%d')      AS billDate,
+               v.total_debit                                AS amount,
+               v.status                                     AS status,
+               v.word                                       AS word
+        <include refid="voucherListWhere"/>
+        ORDER BY v.voucher_date DESC, v.id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- 对账单列表 = 当月有已审核出库的客户（金额 = 当月应收发生额） -->
+    <sql id="statementListWhere">
+        FROM sal_outstock o
+        JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+          AND o.out_date &gt;= #{from} AND o.out_date &lt; #{to}
+    </sql>
+
+    <select id="countStatementCustomers" resultType="long">
+        SELECT COUNT(DISTINCT o.customer_id) <include refid="statementListWhere"/>
+    </select>
+
+    <select id="listStatementCustomers" resultType="map">
+        SELECT c.id                                    AS id,
+               c.code                                  AS billNo,
+               c.name                                  AS partyName,
+               DATE_FORMAT(#{from}, '%Y-%m')           AS billDate,
+               COUNT(DISTINCT o.id)                    AS billCount,
+               COALESCE(SUM(o.total_amount), 0)        AS amount
+        <include refid="statementListWhere"/>
+        GROUP BY c.id, c.code, c.name
+        ORDER BY amount DESC, c.id
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- ==================== 销售订单打印数据 ==================== -->
+
+    <select id="selectSalOrder" resultType="map">
+        SELECT o.id,
+               o.order_no                                       AS orderNo,
+               DATE_FORMAT(o.order_date, '%Y-%m-%d')            AS orderDate,
+               o.total_qty                                      AS totalQty,
+               o.total_amount                                   AS totalAmount,
+               o.status                                         AS status,
+               o.remark                                         AS remark,
+               c.code                                           AS custCode,
+               c.name                                           AS custName,
+               c.contact                                        AS custContact,
+               c.phone                                          AS custPhone,
+               c.address                                        AS custAddress,
+               w.name                                           AS warehouseName,
+               IFNULL(NULLIF(m.nickname, ''), m.username)       AS makerName,
+               IFNULL(NULLIF(a.nickname, ''), a.username)       AS auditorName,
+               DATE_FORMAT(o.audit_time, '%Y-%m-%d')            AS auditDate
+        FROM sal_order o
+        LEFT JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id AND w.deleted = 0
+        LEFT JOIN sys_user m ON m.id = o.create_by AND m.deleted = 0
+        LEFT JOIN sys_user a ON a.id = o.audit_by AND a.deleted = 0
+        WHERE o.id = #{id} AND o.deleted = 0
+    </select>
+
+    <select id="selectSalOrderDetails" resultType="map">
+        SELECT m.code                        AS matCode,
+               m.name                        AS matName,
+               m.spec                        AS matSpec,
+               u.name                        AS unitName,
+               d.qty                         AS qty,
+               d.price                       AS price,
+               d.amount                      AS amount,
+               d.remark                      AS remark
+        FROM sal_order_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        WHERE d.order_id = #{orderId} AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+
+    <!-- ==================== 销售出库单（送货单）打印数据 ==================== -->
+
+    <select id="selectOutstock" resultType="map">
+        SELECT o.id,
+               o.out_no                                          AS outNo,
+               o.order_no                                        AS orderNo,
+               DATE_FORMAT(o.out_date, '%Y-%m-%d')               AS outDate,
+               o.total_qty                                       AS totalQty,
+               o.total_amount                                    AS totalAmount,
+               o.status                                          AS status,
+               o.remark                                          AS remark,
+               c.code                                            AS custCode,
+               c.name                                            AS custName,
+               c.contact                                         AS custContact,
+               c.phone                                           AS custPhone,
+               c.address                                         AS custAddress,
+               w.name                                            AS warehouseName,
+               IFNULL(NULLIF(m.nickname, ''), m.username)        AS makerName,
+               IFNULL(NULLIF(a.nickname, ''), a.username)        AS auditorName,
+               DATE_FORMAT(o.audit_time, '%Y-%m-%d')             AS auditDate
+        FROM sal_outstock o
+        LEFT JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id AND w.deleted = 0
+        LEFT JOIN sys_user m ON m.id = o.create_by AND m.deleted = 0
+        LEFT JOIN sys_user a ON a.id = o.audit_by AND a.deleted = 0
+        WHERE o.id = #{id} AND o.deleted = 0
+    </select>
+
+    <select id="selectOutstockDetails" resultType="map">
+        SELECT m.code                        AS matCode,
+               m.name                        AS matName,
+               m.spec                        AS matSpec,
+               u.name                        AS unitName,
+               d.qty                         AS qty,
+               d.price                       AS price,
+               d.amount                      AS amount,
+               d.remark                      AS remark
+        FROM sal_outstock_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        WHERE d.out_id = #{outId} AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+
+    <!-- ==================== 采购订单打印数据 ==================== -->
+
+    <select id="selectPurOrder" resultType="map">
+        SELECT o.id,
+               o.order_no                                       AS orderNo,
+               DATE_FORMAT(o.order_date, '%Y-%m-%d')            AS orderDate,
+               o.total_amount                                   AS totalAmount,
+               o.status                                         AS status,
+               o.remark                                         AS remark,
+               s.code                                           AS suppCode,
+               s.name                                           AS suppName,
+               s.contact                                        AS suppContact,
+               s.phone                                          AS suppPhone,
+               s.address                                        AS suppAddress,
+               w.name                                           AS warehouseName,
+               IFNULL(NULLIF(m.nickname, ''), m.username)       AS makerName,
+               IFNULL(NULLIF(a.nickname, ''), a.username)       AS auditorName,
+               DATE_FORMAT(o.audit_time, '%Y-%m-%d')            AS auditDate
+        FROM pur_order o
+        LEFT JOIN base_supplier s ON s.id = o.supplier_id AND s.deleted = 0
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id AND w.deleted = 0
+        LEFT JOIN sys_user m ON m.id = o.create_by AND m.deleted = 0
+        LEFT JOIN sys_user a ON a.id = o.audit_by AND a.deleted = 0
+        WHERE o.id = #{id} AND o.deleted = 0
+    </select>
+
+    <select id="selectPurOrderDetails" resultType="map">
+        SELECT m.code                        AS matCode,
+               m.name                        AS matName,
+               m.spec                        AS matSpec,
+               u.name                        AS unitName,
+               d.qty                         AS qty,
+               d.price                       AS price,
+               d.tax_rate                    AS taxRate,
+               d.amount                      AS amount,
+               DATE_FORMAT(d.delivery_date, '%Y-%m-%d') AS deliveryDate,
+               d.remark                      AS remark
+        FROM pur_order_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        WHERE d.order_id = #{orderId} AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+
+    <!-- ==================== 记账凭证打印数据 ==================== -->
+
+    <select id="selectVoucher" resultType="map">
+        SELECT v.id,
+               v.voucher_no                                  AS voucherNo,
+               v.word                                        AS word,
+               v.attachment_count                            AS attachmentCount,
+               v.total_debit                                 AS totalDebit,
+               v.total_credit                                AS totalCredit,
+               v.status                                      AS status,
+               v.remark                                      AS remark,
+               DATE_FORMAT(v.voucher_date, '%Y-%m-%d')       AS voucherDate,
+               IFNULL(NULLIF(m.nickname, ''), m.username)    AS makerName,
+               IFNULL(NULLIF(a.nickname, ''), a.username)    AS auditorName
+        FROM fin_voucher v
+        LEFT JOIN sys_user m ON m.id = v.create_by AND m.deleted = 0
+        LEFT JOIN sys_user a ON a.id = v.audit_by AND a.deleted = 0
+        WHERE v.id = #{id} AND v.deleted = 0
+    </select>
+
+    <select id="selectVoucherEntries" resultType="map">
+        SELECT e.line_no          AS lineNo,
+               e.summary          AS summary,
+               s.code             AS subjectCode,
+               s.name             AS subjectName,
+               e.debit_amount     AS debitAmount,
+               e.credit_amount    AS creditAmount
+        FROM fin_voucher_entry e
+        LEFT JOIN fin_subject s ON s.id = e.subject_id AND s.deleted = 0
+        WHERE e.voucher_id = #{voucherId} AND e.deleted = 0
+        ORDER BY e.line_no
+    </select>
+
+    <!-- ==================== 客户月度对账单打印数据 ==================== -->
+
+    <select id="selectCustomer" resultType="map">
+        SELECT c.id,
+               c.code      AS custCode,
+               c.name      AS custName,
+               c.contact   AS custContact,
+               c.phone     AS custPhone,
+               c.address   AS custAddress
+        FROM base_customer c
+        WHERE c.id = #{id} AND c.deleted = 0
+    </select>
+
+    <!-- 当月已审核出库明细（应收发生额口径，与 /report/sales/detail 一致） -->
+    <select id="selectStatementRows" resultType="map">
+        SELECT o.out_no                             AS outNo,
+               o.order_no                           AS orderNo,
+               DATE_FORMAT(o.out_date, '%Y-%m-%d')  AS outDate,
+               m.code                               AS matCode,
+               m.name                               AS matName,
+               d.qty                                AS qty,
+               d.amount                             AS amount
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+          AND o.customer_id = #{customerId}
+          AND o.out_date &gt;= #{from} AND o.out_date &lt; #{to}
+        ORDER BY o.out_date, o.out_no, d.id
+    </select>
+
+    <!-- 期初应收 = 客户期初应收 + 月初前全部已审核出库合计（核销不回溯，快照口径） -->
+    <select id="selectCustomerOpening" resultType="java.math.BigDecimal">
+        SELECT COALESCE(c.init_receivable, 0) + COALESCE((
+            SELECT SUM(o.total_amount)
+            FROM sal_outstock o
+            WHERE o.deleted = 0 AND o.status = 10
+              AND o.customer_id = c.id
+              AND o.out_date &lt; #{from}
+        ), 0)
+        FROM base_customer c
+        WHERE c.id = #{customerId} AND c.deleted = 0
+    </select>
+
+</mapper>

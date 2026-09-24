@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 序列号台账 SQL（V422）：分页（正查=序列号，反查=物料）+ 批量取在库序列号。 -->
+<mapper namespace="com.erp.inventory.mapper.InvSerialMapper">
+
+    <select id="selectSerialPage" resultType="com.erp.inventory.dto.vo.InvSerialVO">
+        SELECT s.id,
+               s.serial_no,
+               s.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               s.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               s.batch_no,
+               s.status,
+               s.source_no,
+               s.out_no,
+               s.remark,
+               s.create_time,
+               s.update_time
+        FROM inv_serial s
+                 LEFT JOIN base_material m ON m.id = s.material_id
+                 LEFT JOIN base_warehouse w ON w.id = s.warehouse_id
+        WHERE s.deleted = 0
+        <if test="q.serialNo != null and q.serialNo != ''">
+            AND (s.serial_no = #{q.serialNo} OR s.serial_no LIKE CONCAT(#{q.serialNo}, '%'))
+        </if>
+        <if test="q.materialId != null">
+            AND s.material_id = #{q.materialId}
+        </if>
+        <if test="q.status != null and q.status != ''">
+            AND s.status = #{q.status}
+        </if>
+        <if test="q.docNo != null and q.docNo != ''">
+            AND (s.source_no LIKE CONCAT('%', #{q.docNo}, '%')
+                OR s.out_no LIKE CONCAT('%', #{q.docNo}, '%'))
+        </if>
+        ORDER BY s.id DESC
+    </select>
+
+    <select id="selectBySerialNos" resultType="com.erp.inventory.entity.InvSerial">
+        SELECT id, serial_no, material_id, warehouse_id, batch_no, status, source_no, out_no
+        FROM inv_serial
+        WHERE deleted = 0
+          AND serial_no IN
+        <foreach collection="serialNos" item="no" open="(" separator="," close=")">#{no}</foreach>
+    </select>
+</mapper>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  设备台账统计 SQL：状态分布 + 当月维修次数 TOP5。
+  跨模块约定：仅 JOIN 本模块表（eqp_device / eqp_repair），不触碰他人业务表。
+-->
+<mapper namespace="com.erp.equipment.mapper.EqpDeviceMapper">
+
+    <!-- 设备状态分布（在用台账按 status 计数；statusLabel 由 Java 侧补齐） -->
+    <select id="countByStatus" resultType="com.erp.equipment.dto.vo.StatisticsVO$StatusCount">
+        SELECT d.status,
+               COUNT(*) AS count
+        FROM eqp_device d
+        WHERE d.deleted = 0
+        GROUP BY d.status
+    </select>
+
+    <!-- 当月维修次数 TOP5 设备（按工单报修时间归月；报修即计次，含未完工工单） -->
+    <select id="selectMonthRepairTop" resultType="com.erp.equipment.dto.vo.StatisticsVO$DeviceRepairTop">
+        SELECT r.device_id,
+               d.code  AS device_code,
+               d.name  AS device_name,
+               COUNT(*) AS repair_count
+        FROM eqp_repair r
+                 INNER JOIN eqp_device d ON d.id = r.device_id AND d.deleted = 0
+        WHERE r.deleted = 0
+          AND r.report_time &gt;= #{monthStart}
+        GROUP BY r.device_id, d.code, d.name
+        ORDER BY repair_count DESC, r.device_id
+        LIMIT 5
+    </select>
+</mapper>

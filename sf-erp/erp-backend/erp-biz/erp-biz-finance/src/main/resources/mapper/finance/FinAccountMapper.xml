@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  账户余额条件 UPDATE：数据库层原子累加，防并发错账；
+  付款（delta < 0）时以 current_balance >= amount 兜底余额不足（不允许透支）。
+-->
+<mapper namespace="com.erp.finance.mapper.FinAccountMapper">
+
+    <update id="changeBalance">
+        UPDATE fin_account
+        SET current_balance = current_balance + #{delta}
+        WHERE id = #{id}
+          AND book_id = #{bookId}
+          AND deleted = 0
+          AND status = 1
+        <if test="delta &lt; 0">
+          AND current_balance &gt;= #{amount}
+        </if>
+    </update>
+</mapper>

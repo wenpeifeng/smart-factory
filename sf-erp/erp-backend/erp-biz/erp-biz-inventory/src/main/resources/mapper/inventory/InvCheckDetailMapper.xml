@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.erp.inventory.mapper.InvCheckDetailMapper">
+
+    <!-- 盘点快照：该仓库当前库存全量抄入明细（book_qty=当前库存），原子 INSERT...SELECT。
+         V411 起按批次行快照（batch_no 随库存行抄入）；V421 起带库位维度
+         （location_id 随库存行抄入，uk_check_material 含 location_id）：
+         同批次未上架行与库位行各自一条快照行，调平时按行精确对位 -->
+    <insert id="snapshotFromStock">
+        INSERT INTO inv_check_detail (check_id, material_id, batch_no, location_id, book_qty)
+        SELECT #{checkId}, material_id, batch_no, location_id, qty
+        FROM inv_stock
+        WHERE warehouse_id = #{warehouseId}
+          AND deleted = 0
+    </insert>
+
+    <select id="selectDetailsByCheckId" resultType="com.erp.inventory.dto.vo.CheckDetailVO">
+        SELECT d.id,
+               d.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               d.batch_no,
+               d.location_id,
+               l.code AS location_code,
+               d.book_qty,
+               d.actual_qty,
+               d.diff_qty
+        FROM inv_check_detail d
+                 LEFT JOIN base_material m ON m.id = d.material_id
+                 LEFT JOIN base_location l ON l.id = d.location_id
+        WHERE d.check_id = #{checkId}
+          AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+</mapper>

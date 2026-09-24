@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  维修工单 SQL：分页（JOIN 设备台账 + 备件成本合计子查询）+ 当月备件消耗成本。
+-->
+<mapper namespace="com.erp.equipment.mapper.EqpRepairMapper">
+
+    <!-- 工单分页（备件成本参考合计走子查询，避免行表 JOIN 导致主行膨胀） -->
+    <select id="selectRepairPage" resultType="com.erp.equipment.dto.vo.RepairVO">
+        SELECT r.id,
+               r.repair_no,
+               r.device_id,
+               d.code AS device_code,
+               d.name AS device_name,
+               r.fault_desc,
+               r.reporter,
+               r.report_time,
+               r.status,
+               r.repairer,
+               r.fault_reason,
+               r.finish_time,
+               (SELECT COALESCE(SUM(i.cost_ref), 0) FROM eqp_repair_item i
+                 WHERE i.repair_id = r.id AND i.deleted = 0) AS spare_cost,
+               r.remark,
+               r.create_time
+        FROM eqp_repair r
+                 LEFT JOIN eqp_device d ON d.id = r.device_id
+        WHERE r.deleted = 0
+        <if test="q.status != null">
+            AND r.status = #{q.status}
+        </if>
+        <if test="q.deviceId != null">
+            AND r.device_id = #{q.deviceId}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (r.repair_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR d.code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR d.name LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        ORDER BY r.id DESC
+    </select>
+
+    <!-- 当月备件消耗成本：完工工单（finish_time 归月）的备件明细 cost_ref 合计 -->
+    <select id="sumMonthSpareCost" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(i.cost_ref), 0)
+        FROM eqp_repair_item i
+                 INNER JOIN eqp_repair r ON r.id = i.repair_id AND r.deleted = 0
+        WHERE i.deleted = 0
+          AND r.finish_time &gt;= #{monthStart}
+    </select>
+</mapper>

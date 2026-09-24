@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  资产卡片自定义 SQL：
+  applyDepreciation —— 折旧计提专用条件累加。
+  数据库层兜底"仅 在用 且 已提月数 < 预计年限 的资产可计提"：
+  并发场景（同时处置/同时计提）影响行数为 0，调用方事务回滚，不会多提、不会给已处置资产计提。
+-->
+<mapper namespace="com.erp.asset.mapper.AstAssetMapper">
+
+    <update id="applyDepreciation">
+        UPDATE ast_asset
+        SET accumulated_depreciation = accumulated_depreciation + #{amount},
+            depreciated_months       = depreciated_months + 1
+        WHERE id = #{id}
+          AND deleted = 0
+          AND status = 'IN_USE'
+          AND depreciated_months &lt; expected_life_months
+    </update>
+</mapper>

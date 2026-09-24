@@ -1,0 +1,105 @@
+# ================= ERP 后端全局配置 =================
+# 环境差异配置放 application-{profile}.yml，本文件只放与环境无关的部分。
+
+spring:
+  application:
+    name: erp-backend
+  profiles:
+    active: dev   # 开发环境；生产用 -Dspring.profiles.active=prod 覆盖
+
+  # Jackson：统一日期序列化格式（前端直接展示），时区东八区
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+  # 国际化（i18n）：中英双语消息文件（i18n/messages_zh_CN.properties / messages_en.properties）。
+  # 注意：erp-framework 的 I18nConfig 已显式装配 ResourceBundleMessageSource 并读取以下配置
+  # （存在自定义 MessageSource Bean 时 Spring Boot 自动配置退让），此处为唯一事实来源，
+  # 修改 basename/encoding 直接生效。文案与 key 规范见 docs/modules/i18n.md。
+  messages:
+    basename: i18n/messages
+    encoding: UTF-8
+    # 不回退服务器系统语言（不可控），统一由 LocaleResolver 默认 zh_CN + ErpMessages 中文兜底
+    fallback-to-system-locale: false
+
+  # Flyway：数据库版本管理。
+  # 建表脚本统一存放于 仓库根目录/script/sql/migration（用户要求的统一脚本管理），
+  # 因此以仓库根为工作目录启动（script/sh/start-all.sh 已保证）。
+  flyway:
+    enabled: true
+    locations: filesystem:script/sql/migration
+    baseline-on-migrate: true
+    encoding: UTF-8
+    # 并行开发场景：脚本版本号落盘顺序与提交顺序可能不一致，允许补执行历史间隙
+    out-of-order: true
+
+mybatis-plus:
+  configuration:
+    # 下划线列名自动映射驼峰属性（sys_user_name -> sysUserName）
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL，生产环境由日志级别控制
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      # 逻辑删除：deleted 字段 0-在用 1-已删
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+# springdoc / Swagger UI：/api/swagger-ui.html
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# 日志：格式与级别统一由 logback-spring.xml 管理（三类日志规范见 docs/日志规范.md）。
+# - 级别：dev 业务 DEBUG（MyBatis Slf4j 打印 SQL）；prod/默认 INFO、MyBatis WARN；
+# - 文件：logging.file.path 注入 LOG_PATH，JSON 结构化输出 {LOG_PATH}/erp-backend.json
+#   （相对启动目录 = 仓库根/logs/，按天 + 100MB 滚动保留 30 天）；
+# - 注意：不要在 yml 里配 logging.level.*，否则会覆盖 logback-spring.xml 的 profile 分级。
+logging:
+  file:
+    path: logs
+
+# ================= 价格中心（V131） =================
+# 采购价格流水扫描器：扫已审核采购订单/入库单/定标RFQ 自动沉淀成交价（零侵入，只读约定表）
+price:
+  auto-collect:
+    enabled: true
+
+# 销售定价引擎兜底加成系数：无策略价时 售价 = 物料参考成本(ref_cost) × markup
+sal:
+  price:
+    markup: 1.3
+
+# ================= 统一认证中心（sf-auth，docs/modules/sso-authcenter.md） =================
+# OIDC 授权码+PKCE 登录 + SCIM 用户同步；client_secret 属环境敏感项，生产走环境变量覆盖
+auth:
+  center:
+    base-url: http://localhost:8082/api
+    authorize-page-url: http://localhost:5174/oauth/authorize
+    client-id: erp-web
+    client-secret: demo-secret
+    redirect-uri: http://localhost:5173/sso/callback
+    sync-enabled: true
+    sync-cron: "0 0 * * * ?"
+
+# ================= ERP-MES 集成（V1231，erp-biz-integration） =================
+# 契约：sf-mes/docs/MES与ERP协同设计.md。MES 未就绪时 mode=stub（默认）仅记日志即成功。
+erp:
+  integration:
+    mes:
+      mode: stub                                    # stub 契约桩 / http 真实调用
+      base-url: http://localhost:8081/api            # MES 开放接口基地址（http 模式生效）
+      outbound-token: erp-integration-token          # 下推 MES 的 X-Integration-Token（= mes.integration.erp.inbound-token）
+      inbound-token: erp-integration-token           # MES 回传入站令牌校验（= mes.integration.erp 推送令牌）
+      retry-enabled: true                            # outbox 指数退避重试任务开关（1m/5m/30m/2h/6h，5 次死信）
+      masterdata-reconcile-enabled: true             # 物料/BOM/工艺路线每日全量对账推送开关
+      masterdata-reconcile-cron: 0 0 2 * * ?         # 对账推送时刻（默认每日 02:00）

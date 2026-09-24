@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  销售前端链路自定义 SQL（报价单 / 发货通知单，V3111）。
+  约定（与 SalesBizMapper.xml 一致）：
+  * 单据查询一律 JOIN base_* 表带出名称（跨模块只读，不 import 对方代码）；
+  * 状态流转全部用条件 UPDATE（WHERE 带旧状态），防并发跳跃流转；
+  * 报价单"已过期"为查询时动态判定（status=10 且 valid_until 早于当天），
+    过滤参数 status=30 时按动态条件匹配；
+  * inv_stock 为跨模块约定表（建表归属 V401 库存模块），只读 SUM；
+  * sal_outstock 只读（按单号核销匹配），不修改既有出库代码。
+-->
+<mapper namespace="com.erp.sales.mapper.SalesLinkMapper">
+
+    <!-- ==================== 报价单 ==================== -->
+
+    <!-- 有效状态：已报价但过有效期 → 30已过期（动态判定，不落库） -->
+    <sql id="quotationEffectiveStatus">
+        CASE WHEN q.status = 10 AND q.valid_until &lt; CURDATE() THEN 30 ELSE q.status END
+    </sql>
+
+    <select id="selectQuotationPage" resultType="com.erp.sales.dto.vo.SalQuotationVO">
+        SELECT q.id, q.quotation_no, q.customer_id, q.quote_date, q.valid_until,
+               q.discount_rate, q.status AS raw_status,
+               <include refid="quotationEffectiveStatus"/> AS status,
+               q.order_id, q.order_no, q.submit_time, q.void_time, q.remark, q.create_time,
+               c.code AS customer_code, c.name AS customer_name
+        FROM sal_quotation q
+        LEFT JOIN base_customer c ON c.id = q.customer_id
+        WHERE q.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (q.quotation_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="customerId != null">
+            AND q.customer_id = #{customerId}
+        </if>
+        <choose>
+            <when test="status != null and status == 30">
+                AND q.status = 10 AND q.valid_until &lt; CURDATE()
+            </when>
+            <when test="status != null and status == 10">
+                AND q.status = 10 AND q.valid_until &gt;= CURDATE()
+            </when>
+            <when test="status != null">
+                AND q.status = #{status}
+            </when>
+        </choose>
+        <if test="validFrom != null">
+            AND q.valid_until &gt;= #{validFrom}
+        </if>
+        <if test="validTo != null">
+            AND q.valid_until &lt;= #{validTo}
+        </if>
+        ORDER BY q.id DESC
+    </select>
+
+    <select id="selectQuotation" resultType="com.erp.sales.dto.vo.SalQuotationVO">
+        SELECT q.id, q.quotation_no, q.customer_id, q.quote_date, q.valid_until,
+               q.discount_rate, q.status AS raw_status,
+               <include refid="quotationEffectiveStatus"/> AS status,
+               q.order_id, q.order_no, q.submit_time, q.void_time, q.remark, q.create_time,
+               c.code AS customer_code, c.name AS customer_name
+        FROM sal_quotation q
+        LEFT JOIN base_customer c ON c.id = q.customer_id
+        WHERE q.id = #{id} AND q.deleted = 0
+    </select>
+
+    <select id="selectQuotationItems" resultType="com.erp.sales.dto.vo.SalQuotationItemVO">
+        SELECT i.id, i.quotation_id, i.material_id, i.qty, i.price,
+               i.cost_price, i.amount, i.remark,
+               m.code AS material_code, m.name AS material_name, m.spec AS material_spec
+        FROM sal_quotation_item i
+        LEFT JOIN base_material m ON m.id = i.material_id
+        WHERE i.quotation_id = #{quotationId} AND i.deleted = 0
+        ORDER BY i.id
+    </select>
+
+    <!-- 条件状态更新：防并发重复提交/跳跃流转 -->
+    <update id="submitQuotation">
+        UPDATE sal_quotation
+        SET status = 10, submit_by = #{operator}, submit_time = NOW(), update_time = NOW()
+        WHERE id = #{id} AND status = 0 AND deleted = 0
+    </update>
+
+    <update id="voidQuotation">
+        UPDATE sal_quotation
+        SET status = 40, void_by = #{operator}, void_time = NOW(), update_time = NOW()
+        WHERE id = #{id} AND status IN (0, 10) AND deleted = 0
+    </update>
+
+    <!-- 下推回写：携带旧状态(10)且未过期（防与过期判定并发竞态） -->
+    <update id="markQuotationOrdered">
+        UPDATE sal_quotation
+        SET status = 20, order_id = #{orderId}, order_no = #{orderNo}, update_time = NOW()
+        WHERE id = #{id} AND status = 10 AND valid_until &gt;= CURDATE() AND deleted = 0
+    </update>
+
+    <!-- 跨模块只读：物料成本快照（base_material.ref_cost） -->
+    <select id="selectMaterialCosts" resultType="com.erp.sales.dto.vo.MaterialCostVO">
+        SELECT id, ref_cost
+        FROM base_material
+        WHERE deleted = 0 AND id IN
+        <foreach collection="ids" item="mid" open="(" separator="," close=")">#{mid}</foreach>
+    </select>
+
+    <select id="selectMaterialName" resultType="java.lang.String">
+        SELECT name
+        FROM base_material
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectFirstWarehouseId" resultType="java.lang.Long">
+        SELECT id
+        FROM base_warehouse
+        WHERE deleted = 0
+        ORDER BY id
+        LIMIT 1
+    </select>
+
+    <!-- ==================== 发货通知单 ==================== -->
+
+    <select id="selectNoticePage" resultType="com.erp.sales.dto.vo.SalNoticeVO">
+        SELECT n.id, n.notice_no, n.order_id, n.order_no, n.customer_id, n.warehouse_id,
+               n.plan_date, n.status, n.notify_time, n.cancel_time, n.settle_time,
+               n.remark, n.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name,
+               (SELECT COALESCE(SUM(i.qty), 0) FROM sal_delivery_notice_item i
+                 WHERE i.notice_id = n.id AND i.deleted = 0)     AS total_qty,
+               (SELECT COALESCE(SUM(i.out_qty), 0) FROM sal_delivery_notice_item i
+                 WHERE i.notice_id = n.id AND i.deleted = 0)     AS total_out_qty
+        FROM sal_delivery_notice n
+        LEFT JOIN base_customer c ON c.id = n.customer_id
+        LEFT JOIN base_warehouse w ON w.id = n.warehouse_id
+        WHERE n.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (n.notice_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR n.order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND n.status = #{status}
+        </if>
+        ORDER BY n.id DESC
+    </select>
+
+    <select id="selectNotice" resultType="com.erp.sales.dto.vo.SalNoticeVO">
+        SELECT n.id, n.notice_no, n.order_id, n.order_no, n.customer_id, n.warehouse_id,
+               n.plan_date, n.status, n.notify_time, n.cancel_time, n.settle_time,
+               n.remark, n.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name,
+               (SELECT COALESCE(SUM(i.qty), 0) FROM sal_delivery_notice_item i
+                 WHERE i.notice_id = n.id AND i.deleted = 0)     AS total_qty,
+               (SELECT COALESCE(SUM(i.out_qty), 0) FROM sal_delivery_notice_item i
+                 WHERE i.notice_id = n.id AND i.deleted = 0)     AS total_out_qty
+        FROM sal_delivery_notice n
+        LEFT JOIN base_customer c ON c.id = n.customer_id
+        LEFT JOIN base_warehouse w ON w.id = n.warehouse_id
+        WHERE n.id = #{id} AND n.deleted = 0
+    </select>
+
+    <select id="selectNoticeItems" resultType="com.erp.sales.dto.vo.SalNoticeItemVO">
+        SELECT i.id, i.notice_id, i.order_detail_id, i.material_id, i.qty, i.out_qty,
+               i.remark, (i.qty - i.out_qty) AS remaining_qty,
+               m.code AS material_code, m.name AS material_name, m.spec AS material_spec
+        FROM sal_delivery_notice_item i
+        LEFT JOIN base_material m ON m.id = i.material_id
+        WHERE i.notice_id = #{noticeId} AND i.deleted = 0
+        ORDER BY i.id
+    </select>
+
+    <update id="notifyNotice">
+        UPDATE sal_delivery_notice
+        SET status = 10, notify_by = #{operator}, notify_time = NOW(), update_time = NOW()
+        WHERE id = #{id} AND status = 0 AND deleted = 0
+    </update>
+
+    <!-- 取消守卫：任何明细已发生出库（out_qty>0）即拒绝，条件更新防并发 -->
+    <update id="cancelNotice">
+        UPDATE sal_delivery_notice
+        SET status = 30, cancel_by = #{operator}, cancel_time = NOW(), update_time = NOW()
+        WHERE id = #{id} AND status IN (0, 10) AND deleted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM sal_delivery_notice_item i
+              WHERE i.notice_id = #{id} AND i.deleted = 0 AND i.out_qty &gt; 0
+          )
+    </update>
+
+    <!-- 核销守卫累加：out_qty + qty <= qty（防超通知量核销/并发双击） -->
+    <update id="addNoticeOutQty">
+        UPDATE sal_delivery_notice_item
+        SET out_qty = out_qty + #{qty}, update_time = NOW()
+        WHERE id = #{itemId} AND deleted = 0
+          AND out_qty + #{qty} &lt;= qty
+    </update>
+
+    <!-- 全部明细核销到位 → 已出库（NOT EXISTS 仍有未核销完的行） -->
+    <update id="refreshNoticeOut">
+        UPDATE sal_delivery_notice
+        SET status = 20, update_time = NOW()
+        WHERE id = #{id} AND status = 10 AND deleted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM sal_delivery_notice_item i
+              WHERE i.notice_id = #{id} AND i.deleted = 0 AND i.out_qty &lt; i.qty
+          )
+    </update>
+
+    <update id="markNoticeSettled">
+        UPDATE sal_delivery_notice
+        SET settle_by = #{operator}, settle_time = NOW(), update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <!-- 订单行累计通知数量（有效通知=0草稿/10已通知；编辑时排除自身重复计算） -->
+    <select id="sumActiveNoticeQty" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(i.qty), 0)
+        FROM sal_delivery_notice_item i
+        JOIN sal_delivery_notice n ON n.id = i.notice_id AND n.deleted = 0
+        WHERE i.order_detail_id = #{orderDetailId} AND i.deleted = 0
+          AND n.status IN (0, 10)
+        <if test="excludeNoticeId != null">
+          AND i.notice_id != #{excludeNoticeId}
+        </if>
+    </select>
+
+    <!-- 出库单核销匹配（只读 sal_outstock，不修改既有出库代码） -->
+    <select id="selectOutstockBriefByNo" resultType="com.erp.sales.dto.vo.SalOutstockVO">
+        SELECT id, out_no, order_id, order_no, customer_id, warehouse_id, status
+        FROM sal_outstock
+        WHERE out_no = #{outNo} AND deleted = 0
+    </select>
+
+    <select id="selectOutstockLines" resultType="com.erp.sales.dto.vo.OutstockLineVO">
+        SELECT d.order_detail_id, d.material_id, SUM(d.qty) AS qty
+        FROM sal_outstock_detail d
+        JOIN sal_outstock o ON o.id = d.out_id AND o.deleted = 0
+        WHERE o.out_no = #{outNo} AND d.deleted = 0
+        GROUP BY d.order_detail_id, d.material_id
+    </select>
+
+    <!-- ==================== 备货参考（物料 × 仓库可用量） ==================== -->
+
+    <select id="selectPendingStocks" resultType="com.erp.sales.dto.vo.PendingStockVO">
+        SELECT s.material_id, s.warehouse_id, SUM(s.qty) AS available_qty,
+               m.code AS material_code, m.name AS material_name, m.spec AS material_spec,
+               w.name AS warehouse_name
+        FROM inv_stock s
+        LEFT JOIN base_material m ON m.id = s.material_id
+        LEFT JOIN base_warehouse w ON w.id = s.warehouse_id
+        WHERE s.deleted = 0 AND s.qty &gt; 0
+        <if test="warehouseId != null">
+            AND s.warehouse_id = #{warehouseId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (m.code LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        GROUP BY s.material_id, s.warehouse_id, m.code, m.name, m.spec, w.name
+        ORDER BY m.code, w.name
+    </select>
+
+</mapper>

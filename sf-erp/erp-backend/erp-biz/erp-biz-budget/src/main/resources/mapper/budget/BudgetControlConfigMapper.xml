@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 预算控制配置：按方案取在用配置（每方案至多一条）。 -->
+<mapper namespace="com.erp.budget.mapper.BudgetControlConfigMapper">
+
+    <select id="selectByPlanId" resultType="com.erp.budget.entity.BudgetControlConfig">
+        SELECT id, plan_id, control_way, over_percent,
+               create_by, create_time, update_by, update_time, deleted
+        FROM budget_control_config
+        WHERE plan_id = #{planId} AND deleted = 0
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+</mapper>

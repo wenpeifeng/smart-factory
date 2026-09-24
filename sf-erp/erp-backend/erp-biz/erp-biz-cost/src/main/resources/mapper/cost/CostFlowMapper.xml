@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 存货计价流水：行锁取余额 / 期间重算删除 / 分页 / 收发存汇总 / 月度趋势 / 期初余额 -->
+<mapper namespace="com.erp.cost.mapper.CostFlowMapper">
+
+    <!-- 物料最新一行计价流水（行锁：同一物料计价串行）。
+         注意：不能写 "ORDER BY id DESC LIMIT 1 FOR UPDATE" —— MyBatis-Plus 租户插件
+         （3.5.7 JSqlParser 序列化）重写该形态时会把 FOR UPDATE 错误地放到 ORDER BY 之前，
+         生成非法 SQL（采购入库/销售出库审核的成本过账必炸）。改用子查询取最新一行、
+         外层 FOR UPDATE 加锁：顶层无 LIMIT+FOR UPDATE 组合，插件重写安全，锁语义不变。 -->
+    <select id="selectLastForUpdate" resultType="com.erp.cost.entity.CostFlow">
+        SELECT t.id, t.biz_type, t.biz_id, t.biz_no, t.movement_id, t.material_id, t.warehouse_id,
+               t.biz_date, t.qty, t.unit_cost, t.amount, t.balance_qty, t.balance_cost, t.period
+        FROM (SELECT id, biz_type, biz_id, biz_no, movement_id, material_id, warehouse_id, biz_date,
+                     qty, unit_cost, amount, balance_qty, balance_cost, period
+              FROM cost_flow
+              WHERE material_id = #{materialId} AND deleted = 0
+              ORDER BY id DESC
+              LIMIT 1) t
+        FOR UPDATE
+    </select>
+
+    <!-- 重算窗口物理删除（cost_flow 为可重建运行台账） -->
+    <delete id="deleteByPeriodRange">
+        DELETE FROM cost_flow
+        WHERE period &gt;= #{fromPeriod} AND period &lt;= #{toPeriod}
+    </delete>
+
+    <!-- 计价流水分页（带物料/仓库回显） -->
+    <select id="selectFlowPage" resultType="com.erp.cost.dto.vo.CostFlowVO">
+        SELECT f.id,
+               f.biz_type,
+               f.biz_id,
+               f.biz_no,
+               f.movement_id,
+               f.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               f.warehouse_id,
+               w.name AS warehouse_name,
+               f.biz_date,
+               f.qty,
+               f.unit_cost,
+               f.amount,
+               f.balance_qty,
+               f.balance_cost,
+               f.period
+        FROM cost_flow f
+                 LEFT JOIN base_material m ON m.id = f.material_id
+                 LEFT JOIN base_warehouse w ON w.id = f.warehouse_id
+        WHERE f.deleted = 0
+        <if test="q.period != null and q.period != ''">
+            AND f.period = #{q.period}
+        </if>
+        <if test="q.materialId != null">
+            AND f.material_id = #{q.materialId}
+        </if>
+        <if test="q.bizType != null and q.bizType != ''">
+            AND f.biz_type = #{q.bizType}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (f.biz_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.name LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        ORDER BY f.id DESC
+    </select>
+
+    <!-- 收发存汇总：期初 = 期间前该物料最后一行运行余额；本期入/出按符号汇总 -->
+    <select id="selectPeriodSummary" resultType="com.erp.cost.dto.raw.SummaryRaw">
+        SELECT mat.material_id,
+               bm.code   AS material_code,
+               bm.name   AS material_name,
+               IFNULL(ob.balance_qty, 0)   AS begin_qty,
+               IFNULL(ob.balance_cost, 0)  AS begin_amount,
+               IFNULL(iq.in_qty, 0)        AS in_qty,
+               IFNULL(iq.in_amount, 0)     AS in_amount,
+               IFNULL(oq.out_qty, 0)       AS out_qty,
+               IFNULL(oq.out_amount, 0)    AS out_amount
+        FROM (SELECT DISTINCT material_id FROM cost_flow
+              WHERE deleted = 0 AND period &lt;= #{period}) mat
+                 LEFT JOIN base_material bm ON bm.id = mat.material_id
+                 LEFT JOIN (
+                     /* 每物料取期间前最后一行运行余额作为期初 */
+                     SELECT c.material_id, c.balance_qty, c.balance_cost
+                     FROM cost_flow c
+                     WHERE c.deleted = 0 AND c.period &lt; #{period}
+                       AND c.id = (SELECT MAX(c2.id) FROM cost_flow c2
+                                   WHERE c2.deleted = 0 AND c2.material_id = c.material_id
+                                     AND c2.period &lt; #{period})
+                 ) ob ON ob.material_id = mat.material_id
+                 LEFT JOIN (
+                     SELECT material_id, SUM(qty) AS in_qty, SUM(amount) AS in_amount
+                     FROM cost_flow
+                     WHERE deleted = 0 AND period = #{period} AND qty &gt; 0
+                     GROUP BY material_id
+                 ) iq ON iq.material_id = mat.material_id
+                 LEFT JOIN (
+                     SELECT material_id, SUM(-qty) AS out_qty, SUM(-amount) AS out_amount
+                     FROM cost_flow
+                     WHERE deleted = 0 AND period = #{period} AND qty &lt; 0
+                     GROUP BY material_id
+                 ) oq ON oq.material_id = mat.material_id
+    </select>
+
+    <!-- 月度合计（趋势/结账汇总） -->
+    <select id="selectMonthlyTotals" resultType="com.erp.cost.dto.raw.MonthlyTotalRaw">
+        SELECT period,
+               IFNULL(SUM(CASE WHEN qty &gt; 0 THEN amount ELSE 0 END), 0) AS in_amount,
+               IFNULL(SUM(CASE WHEN qty &lt; 0 THEN -amount ELSE 0 END), 0) AS out_amount,
+               IFNULL(SUM(CASE WHEN biz_type = 'SAL_OUT' AND qty &lt; 0 THEN -amount ELSE 0 END), 0) AS sal_out_cost,
+               IFNULL(SUM(CASE WHEN biz_type = 'PROD_USE' AND qty &lt; 0 THEN -amount ELSE 0 END), 0) AS prod_use_cost
+        FROM cost_flow
+        WHERE deleted = 0 AND period &gt;= #{fromPeriod} AND period &lt;= #{toPeriod}
+        GROUP BY period
+    </select>
+
+    <!-- 期初结存总额：fromPeriod 前每物料最后一行 balance_cost 求和 -->
+    <select id="selectOpeningBalance" resultType="java.math.BigDecimal">
+        SELECT IFNULL(SUM(c.balance_cost), 0)
+        FROM cost_flow c
+        WHERE c.deleted = 0 AND c.period &lt; #{fromPeriod}
+          AND c.id = (SELECT MAX(c2.id) FROM cost_flow c2
+                      WHERE c2.deleted = 0 AND c2.material_id = c.material_id
+                        AND c2.period &lt; #{fromPeriod})
+    </select>
+</mapper>

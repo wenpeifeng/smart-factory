@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  账户流水方向合计（对账用：期初 + 收入 - 支出 应等于当前余额）
+-->
+<mapper namespace="com.erp.finance.mapper.FinAccountFlowMapper">
+
+    <select id="sumAmountByDirection" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount), 0)
+        FROM fin_account_flow
+        WHERE book_id = #{bookId}
+          AND account_id = #{accountId}
+          AND direction = #{direction}
+          AND deleted = 0
+    </select>
+</mapper>

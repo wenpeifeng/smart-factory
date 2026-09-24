@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  组织间调拨库存过账 SQL（inv_stock，inventory 模块约定表，裸 SQL 过账约定）：
+  - 扣减：qty-?&gt;=0 防负库存 + deleted=0，影响 0 行按库存不足回滚；
+  - 增加：常规 UPDATE 命中 0 行走 UPSERT（ON DUPLICATE KEY，不依赖唯一键具体结构）；
+  - 一律钉死 batch_no='' 汇总行（批次物料不在此口径，见 docs/modules/org.md 边界）。
+-->
+<mapper namespace="com.erp.org.mapper.OrgInvStockMapper">
+
+    <!-- 调出仓扣库存：行锁 + 防负库存条件 -->
+    <update id="deductStock">
+        UPDATE inv_stock
+        SET qty     = qty - #{qty},
+            version = version + 1
+        WHERE warehouse_id = #{warehouseId}
+          AND material_id = #{materialId}
+          AND batch_no = ''
+          AND deleted = 0
+          AND qty - #{qty} &gt;= 0
+    </update>
+
+    <!-- 调入仓加库存：常规 UPDATE（汇总行存在时） -->
+    <update id="increaseStock">
+        UPDATE inv_stock
+        SET qty     = qty + #{qty},
+            version = version + 1
+        WHERE warehouse_id = #{warehouseId}
+          AND material_id = #{materialId}
+          AND batch_no = ''
+          AND deleted = 0
+    </update>
+
+    <!-- 调入仓加库存 UPSERT：并发首次插入撞唯一键时数据库兜底合并
+         （ODKU 赋值右侧列用表名限定，兼容 MySQL 8 行别名语法限制） -->
+    <insert id="upsertIncreaseStock">
+        INSERT INTO inv_stock (warehouse_id, material_id, batch_no, qty, version, create_by, update_by)
+        VALUES (#{warehouseId}, #{materialId}, '', #{qty}, 0, #{userId}, #{userId})
+        ON DUPLICATE KEY UPDATE qty = inv_stock.qty + #{qty},
+                                version = inv_stock.version + 1
+    </insert>
+</mapper>

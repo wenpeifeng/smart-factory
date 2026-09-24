@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 预算明细单元格 upsert：uk(plan,dept,subject,month) 命中（含逻辑删行）时更新金额并复活。 -->
+<mapper namespace="com.erp.budget.mapper.BudgetItemMapper">
+
+    <insert id="upsertCell">
+        INSERT INTO budget_item
+            (plan_id, dept_id, subject_id, month, amount,
+             create_by, create_time, update_by, update_time, deleted)
+        VALUES
+            (#{cell.planId}, #{cell.deptId}, #{cell.subjectId}, #{cell.month}, #{cell.amount},
+             #{cell.createBy}, NOW(), #{cell.updateBy}, NOW(), 0)
+        ON DUPLICATE KEY UPDATE
+            amount     = VALUES(amount),
+            update_by  = VALUES(update_by),
+            update_time = NOW(),
+            deleted    = 0
+    </insert>
+</mapper>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.erp.inventory.mapper.InvOtherInLineMapper">
+
+    <select id="selectLinesByDocId" resultType="com.erp.inventory.dto.vo.OtherDocLineVO">
+        SELECT l.id,
+               l.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               l.batch_no,
+               l.qty,
+               l.remark
+        FROM inv_other_in_line l
+                 LEFT JOIN base_material m ON m.id = l.material_id
+        WHERE l.other_in_id = #{docId}
+          AND l.deleted = 0
+        ORDER BY l.id
+    </select>
+</mapper>

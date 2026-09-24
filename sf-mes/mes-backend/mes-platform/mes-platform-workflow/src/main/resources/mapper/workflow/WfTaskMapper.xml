@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  我的任务分页查询（待办/已办共用）。
+  done=true 查已办（非 PENDING，含通过/驳回/失效），done=false 查待办（PENDING）。
+-->
+<mapper namespace="com.mes.workflow.mapper.WfTaskMapper">
+
+    <select id="selectTaskPage" resultType="com.mes.workflow.dto.vo.WfTaskVO">
+        SELECT t.id,
+               t.instance_id,
+               t.node_id,
+               t.node_order,
+               t.node_name,
+               i.biz_type,
+               i.biz_no,
+               i.biz_id,
+               d.flow_name,
+               i.start_user_id,
+               u.nickname AS start_user_name,
+               i.status AS instance_status,
+               t.status,
+               t.opinion,
+               t.approve_time,
+               t.create_time
+        FROM wf_task t
+        JOIN wf_instance i ON i.id = t.instance_id AND i.deleted = 0
+        LEFT JOIN wf_definition d ON d.id = i.definition_id AND d.deleted = 0
+        LEFT JOIN sys_user u ON u.id = i.start_user_id AND u.deleted = 0
+        <where>
+            t.deleted = 0
+            AND t.approver_id = #{approverId}
+            <if test="done">AND t.status &lt;&gt; 'PENDING'</if>
+            <if test="!done">AND t.status = 'PENDING'</if>
+            <if test="keyword != null and keyword != ''">AND i.biz_no LIKE CONCAT('%', #{keyword}, '%')</if>
+            <if test="bizType != null and bizType != ''">AND i.biz_type = #{bizType}</if>
+        </where>
+        ORDER BY t.id DESC
+    </select>
+</mapper>

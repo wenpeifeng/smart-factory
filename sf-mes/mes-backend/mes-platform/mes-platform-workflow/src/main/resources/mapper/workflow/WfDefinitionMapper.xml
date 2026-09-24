@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  流程定义关联查询（分页，带节点数统计）。
+  说明：自定义 SQL 不走 MP 逻辑删除插件，deleted=0 条件必须显式写出。
+-->
+<mapper namespace="com.mes.workflow.mapper.WfDefinitionMapper">
+
+    <select id="selectDefinitionPage" resultType="com.mes.workflow.dto.vo.WfDefinitionVO">
+        SELECT d.id,
+               d.flow_code,
+               d.flow_name,
+               d.biz_type,
+               d.status,
+               d.remark,
+               (SELECT COUNT(*) FROM wf_node n
+                 WHERE n.definition_id = d.id AND n.deleted = 0) AS node_count,
+               d.create_time
+        FROM wf_definition d
+        <where>
+            d.deleted = 0
+            <if test="keyword != null and keyword != ''">
+                AND (d.flow_code LIKE CONCAT('%', #{keyword}, '%')
+                 OR d.flow_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="bizType != null and bizType != ''">AND d.biz_type = #{bizType}</if>
+            <if test="status != null">AND d.status = #{status}</if>
+        </where>
+        ORDER BY d.id DESC
+    </select>
+</mapper>

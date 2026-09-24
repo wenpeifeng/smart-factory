@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  保养计划 SQL：分页（JOIN 设备台账）+ 到期清单。
+  daysLeft/overdue 由 Java 侧按当天计算填充，SQL 只出原始日期。
+-->
+<mapper namespace="com.erp.equipment.mapper.EqpMaintainPlanMapper">
+
+    <!-- 计划分页 -->
+    <select id="selectPlanPage" resultType="com.erp.equipment.dto.vo.PlanVO">
+        SELECT p.id,
+               p.device_id,
+               d.code AS device_code,
+               d.name AS device_name,
+               p.maintain_type,
+               p.cycle_days,
+               p.last_date,
+               p.next_date,
+               p.remark
+        FROM eqp_maintain_plan p
+                 LEFT JOIN eqp_device d ON d.id = p.device_id
+        WHERE p.deleted = 0
+        <if test="q.deviceId != null">
+            AND p.device_id = #{q.deviceId}
+        </if>
+        <if test="q.dueOnly != null and q.dueOnly">
+            AND p.next_date &lt;= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+        </if>
+        ORDER BY p.next_date IS NULL, p.next_date ASC, p.id DESC
+    </select>
+
+    <!-- 到期清单：next_date <= CURDATE()+days（含已逾期），按到期日升序（最紧急在前） -->
+    <select id="selectDuePlans" resultType="com.erp.equipment.dto.vo.PlanVO">
+        SELECT p.id,
+               p.device_id,
+               d.code AS device_code,
+               d.name AS device_name,
+               p.maintain_type,
+               p.cycle_days,
+               p.last_date,
+               p.next_date,
+               p.remark
+        FROM eqp_maintain_plan p
+                 LEFT JOIN eqp_device d ON d.id = p.device_id
+        WHERE p.deleted = 0
+          AND p.next_date &lt;= DATE_ADD(CURDATE(), INTERVAL #{days} DAY)
+        ORDER BY p.next_date ASC, p.id DESC
+    </select>
+</mapper>

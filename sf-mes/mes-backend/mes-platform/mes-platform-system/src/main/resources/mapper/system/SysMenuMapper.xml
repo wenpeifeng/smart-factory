@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  菜单 Mapper XML：按用户聚合可见菜单（user_role -> role_menu -> menu 联表）。
+  只读查询，写操作走 MP BaseMapper。
+-->
+<mapper namespace="com.mes.system.mapper.SysMenuMapper">
+
+    <select id="selectMenusByUserId" resultType="com.mes.system.entity.SysMenu">
+        SELECT DISTINCT m.`id`, m.`parent_id`, m.`name`, m.`type`, m.`path`, m.`component`,
+               m.`perms`, m.`icon`, m.`sort`, m.`visible`, m.`status`,
+               m.`create_by`, m.`create_time`, m.`update_by`, m.`update_time`, m.`deleted`
+        FROM `sys_menu` m
+                 INNER JOIN `sys_role_menu` rm ON rm.`menu_id` = m.`id`
+                 INNER JOIN `sys_user_role` ur ON ur.`role_id` = rm.`role_id`
+                 INNER JOIN `sys_role` r ON r.`id` = ur.`role_id`
+        WHERE ur.`user_id` = #{userId}
+          AND r.`deleted` = 0 AND r.`status` = 1
+          AND m.`deleted` = 0 AND m.`status` = 1
+        <if test="types != null and types.size() > 0">
+            AND m.`type` IN
+            <foreach collection="types" item="t" open="(" separator="," close=")">#{t}</foreach>
+        </if>
+        ORDER BY m.`sort`, m.`id`
+    </select>
+</mapper>

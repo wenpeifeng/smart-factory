@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 工单成本归集：按生产订单 ID 取费用分摊行 -->
+<mapper namespace="com.erp.cost.mapper.CostWorkOrderMapper">
+
+    <select id="selectByWorkOrderId" resultType="com.erp.cost.entity.CostWorkOrder">
+        SELECT id, work_order_id, order_no, material_id, qty, finish_qty, status,
+               labor_hours, overhead_amount, remark
+        FROM cost_work_order
+        WHERE work_order_id = #{workOrderId} AND deleted = 0
+        LIMIT 1
+    </select>
+</mapper>

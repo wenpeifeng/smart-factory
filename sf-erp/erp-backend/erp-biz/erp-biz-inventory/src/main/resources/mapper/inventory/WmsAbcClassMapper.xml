@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- WMS ABC 分级 SQL（V421）：现行分级分页 / 出库频次统计 / 分级计数 / 分级涉及仓库。 -->
+<mapper namespace="com.erp.inventory.mapper.WmsAbcClassMapper">
+
+    <select id="selectAbcPage" resultType="com.erp.inventory.dto.vo.AbcClassVO">
+        SELECT c.id,
+               c.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               c.level,
+               c.freq,
+               c.calc_date
+        FROM wms_abc_class c
+                 LEFT JOIN base_material m ON m.id = c.material_id
+        WHERE c.deleted = 0
+        <if test="q.level != null and q.level != ''">
+            AND c.level = #{q.level}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (m.code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.name LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        ORDER BY c.freq DESC, c.id
+    </select>
+
+    <!-- 近 N 天各物料出库频次（出库流水行数，降序）——分级原始数据 -->
+    <select id="selectOutboundFrequency" resultType="java.util.HashMap">
+        SELECT material_id, COUNT(*) AS freq
+        FROM inv_movement
+        WHERE deleted = 0
+          AND qty &lt; 0
+          AND create_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+        GROUP BY material_id
+        ORDER BY freq DESC, material_id
+    </select>
+
+    <!-- 各分级物料数 -->
+    <select id="selectLevelCounts" resultType="java.util.HashMap">
+        SELECT level, COUNT(*) AS cnt
+        FROM wms_abc_class
+        WHERE deleted = 0
+        GROUP BY level
+    </select>
+
+    <!-- 分级涉及仓库：该分级物料有库存行的仓库（循环盘点按仓生成） -->
+    <select id="selectWarehousesWithClassLevel" resultType="java.util.HashMap">
+        SELECT DISTINCT s.warehouse_id
+        FROM inv_stock s
+                 JOIN wms_abc_class c ON c.material_id = s.material_id AND c.deleted = 0
+        WHERE s.deleted = 0
+          AND c.level = #{level}
+    </select>
+</mapper>

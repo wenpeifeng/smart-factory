@@ -1,0 +1,225 @@
+/*
+ * 单据打印中心 A4 版式样式（PrintPage/PrintPreview 共用）。
+ * 屏显：灰底画布上一张 210×297mm 白纸（阴影模拟纸张）；
+ * 打印（window.print）：visibility 法只保留纸张内容 —— 预览页嵌在
+ * MainLayout 内（侧边栏/顶栏均为公共布局，不可改），用
+ * "body 全隐藏 + .print-sheet 及其子级可见 + 纸张绝对定位到页面左上角"
+ * 的组合保证打印物干净；.print-sheet 的祖先均无 position/transform，
+ * 绝对定位的包含块是初始包含块，可自然逃逸 Content 的 overflow 裁剪。
+ * 分页：@page A4 + 表头跨页自动重复（thead）+ 行/签字栏不跨页截断。
+ */
+
+/* ==================== 屏显预览画布 ==================== */
+.print-canvas {
+  background: #eef1f5;
+  min-height: 100%;
+  padding: 24px 0 48px;
+}
+
+/* ==================== A4 纸张 ==================== */
+.print-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 14mm 12mm;
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(15, 24, 41, 0.14);
+  color: #1f2329;
+  font-family: 'Songti SC', 'STSong', 'SimSun', 'Noto Serif CJK SC', serif;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 公司抬头 + 单据标题 */
+.print-company {
+  text-align: center;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-family: 'Heiti SC', 'STHeiti', 'SimHei', 'Noto Sans CJK SC', sans-serif;
+}
+
+.print-title {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 6px;
+  letter-spacing: 6px;
+}
+
+/* 单号/日期行（右侧对齐的辅助信息） */
+.print-subline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 8px 0 6px;
+  font-size: 12px;
+}
+
+/* 主信息区：两列（4 格）网格 */
+.print-fields {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+  table-layout: fixed;
+}
+
+.print-fields td {
+  border: 1px solid #333;
+  padding: 4px 8px;
+  word-break: break-all;
+}
+
+.print-fields .print-field-label {
+  width: 15%;
+  background: #f5f6f8;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 明细表 */
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.print-table th,
+.print-table td {
+  border: 1px solid #333;
+  padding: 4px 6px;
+  word-break: break-all;
+}
+
+.print-table th {
+  background: #f5f6f8;
+  text-align: center;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.print-table td.print-align-center,
+.print-table th.print-align-center {
+  text-align: center;
+}
+
+.print-table td.print-align-right,
+.print-table th.print-align-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.print-table .print-empty-row td {
+  text-align: center;
+  color: #8c939c;
+  padding: 18px 0;
+}
+
+/* 合计区 + 大写金额 */
+.print-totals {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.print-totals-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.print-totals-row .print-total-item {
+  min-width: 220px;
+}
+
+.print-words {
+  font-weight: 700;
+}
+
+/* 表尾备注 */
+.print-remark {
+  margin-top: 8px;
+  color: #444;
+}
+
+/* 签字栏 */
+.print-signatures {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 26px;
+  font-size: 12px;
+}
+
+.print-signatures .print-sign-item {
+  white-space: nowrap;
+}
+
+/* 页脚（打印时间/打印人） */
+.print-footer {
+  margin-top: 18px;
+  padding-top: 6px;
+  border-top: 1px solid #ccc;
+  display: flex;
+  justify-content: space-between;
+  color: #666;
+  font-size: 11px;
+  font-family: 'Songti SC', 'STSong', 'SimSun', serif;
+}
+
+/* 模板附加脚注（联次说明等） */
+.print-footnote {
+  margin-top: 6px;
+  color: #666;
+  font-size: 11px;
+}
+
+/* ==================== 打印媒介 ==================== */
+@page {
+  size: A4;
+  margin: 10mm 12mm;
+}
+
+@media print {
+  /* 只保留纸张内容：布局壳（侧边栏/顶栏/工具条）全部不可见 */
+  body * {
+    visibility: hidden;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+
+  /* 纸张脱离滚动容器，钉到打印页左上角，由 @page 边距控制留白 */
+  .print-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* 分页控制：明细行不断开；表头每页自动重复；签字/合计整体不跨页 */
+  .print-table thead {
+    display: table-header-group;
+  }
+
+  .print-table tr,
+  .print-signatures,
+  .print-totals,
+  .print-footer {
+    page-break-inside: avoid;
+  }
+
+  .print-signatures {
+    margin-top: 14px;
+  }
+}

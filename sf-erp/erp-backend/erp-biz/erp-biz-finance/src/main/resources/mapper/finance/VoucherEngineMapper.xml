@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  凭证模板引擎跨模块只读 SQL（V521）。
+  约定：pur_instock/pur_return/sal_outstock/sal_return/inv_sales_invoice/inv_purchase_invoice/
+  fin_receipt/fin_payment 为采购/销售/发票/财务模块标准表，此处只读
+  （SELECT / NOT EXISTS），不 import 对方代码——与 WmsTaskMapper 同一模式。
+  结果 record 按列序位置映射，SELECT 列顺序必须与 record 构造器参数顺序一致。
+  租户插件对全部 SQL 自动追加 tenant_id。
+-->
+<mapper namespace="com.erp.finance.mapper.VoucherEngineMapper">
+
+    <!-- ============ 扫描候选：已生效且无对应凭证的八类单据 ============ -->
+    <select id="selectScanCandidates" resultType="com.erp.finance.dto.vo.EngineScanCandidateVO">
+        SELECT c.biz_type, c.id, c.doc_no, c.doc_date
+        FROM (
+            <!-- 采购入库：status=10 已审核；金额口径=明细含税，凭证日期=入库日期 -->
+            SELECT 'PUR_INSTOCK' AS biz_type, h.id, h.instock_no AS doc_no, h.instock_date AS doc_date
+            FROM pur_instock h
+            WHERE h.deleted = 0 AND h.status = 10
+            UNION ALL
+            <!-- 采购退货：status=10 已审核（引擎对金额取负=红字） -->
+            SELECT 'PUR_RET', h.id, h.return_no, h.return_date
+            FROM pur_return h
+            WHERE h.deleted = 0 AND h.status = 10
+            UNION ALL
+            <!-- 销售出库：status=10 已审核；金额口径=明细不含税 -->
+            SELECT 'SAL_OUTSTOCK', h.id, h.out_no, h.out_date
+            FROM sal_outstock h
+            WHERE h.deleted = 0 AND h.status = 10
+            UNION ALL
+            <!-- 销售退货：status=10 已审核（红字） -->
+            SELECT 'SAL_RET', h.id, h.return_no, h.return_date
+            FROM sal_return h
+            WHERE h.deleted = 0 AND h.status = 10
+            UNION ALL
+            <!-- 销项发票：status=10 已开票（红字负数票同状态，金额列自带负号） -->
+            SELECT 'INVOICE_SALES', h.id, h.invoice_no, COALESCE(h.invoice_date, CURDATE())
+            FROM inv_sales_invoice h
+            WHERE h.deleted = 0 AND h.status = 10
+            UNION ALL
+            <!-- 进项发票：status=10 已认证；凭证日期优先认证日（进项税额归属期） -->
+            SELECT 'INVOICE_PURCHASE', h.id, h.invoice_no, COALESCE(h.auth_date, h.invoice_date, CURDATE())
+            FROM inv_purchase_invoice h
+            WHERE h.deleted = 0 AND h.status = 10
+            UNION ALL
+            <!-- 收款单：无状态列，落库即生效 -->
+            SELECT 'RECEIPT', h.id, h.receipt_no, h.biz_date
+            FROM fin_receipt h
+            WHERE h.deleted = 0
+            UNION ALL
+            <!-- 付款单：同上 -->
+            SELECT 'PAYMENT', h.id, h.payment_no, h.biz_date
+            FROM fin_payment h
+            WHERE h.deleted = 0
+        ) c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM fin_voucher v
+            WHERE v.deleted = 0 AND v.book_id = #{bookId}
+              AND v.source_type = c.biz_type AND v.source_id = c.id)
+        <if test="bizType != null and bizType != ''">
+            AND c.biz_type = #{bizType}
+        </if>
+        <if test="from != null">
+            AND c.doc_date &gt;= #{from}
+        </if>
+        <if test="to != null">
+            AND c.doc_date &lt;= #{to}
+        </if>
+        <if test="daysBack != null">
+            AND c.doc_date &gt;= DATE_SUB(CURDATE(), INTERVAL #{daysBack} DAY)
+        </if>
+        ORDER BY c.doc_date, c.id
+        LIMIT 500
+    </select>
+
+    <!-- ============ 来源单据头（八类归一化）============ -->
+    <select id="selectDocHeader" resultType="com.erp.finance.dto.vo.EngineDocHeaderVO">
+        SELECT
+        <choose>
+            <when test="bizType == 'PUR_INSTOCK'">
+                h.id, h.instock_no, h.instock_date, h.supplier_id,
+                NULL, h.total_amount,
+                NULL, NULL, h.status, 0
+                FROM pur_instock h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'PUR_RET'">
+                h.id, h.return_no, h.return_date, h.supplier_id,
+                NULL, h.total_amount,
+                NULL, NULL, h.status, 0
+                FROM pur_return h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'SAL_OUTSTOCK'">
+                h.id, h.out_no, h.out_date, h.customer_id,
+                NULL, h.total_amount,
+                NULL, NULL, h.status, 0
+                FROM sal_outstock h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'SAL_RET'">
+                h.id, h.return_no, h.return_date, h.customer_id,
+                NULL, h.total_amount,
+                NULL, NULL, h.status, 0
+                FROM sal_return h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'INVOICE_SALES'">
+                h.id, h.invoice_no, COALESCE(h.invoice_date, CURDATE()), h.customer_id,
+                NULL, h.total_amount,
+                h.tax_amount, h.amount, h.status, h.red_flag
+                FROM inv_sales_invoice h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'INVOICE_PURCHASE'">
+                h.id, h.invoice_no, COALESCE(h.auth_date, h.invoice_date, CURDATE()), h.supplier_id,
+                NULL, h.total_amount,
+                h.tax_amount, h.amount, h.status, h.red_flag
+                FROM inv_purchase_invoice h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'RECEIPT'">
+                h.id, h.receipt_no, h.biz_date, h.customer_id,
+                h.account_id, h.amount,
+                NULL, NULL, 10, 0
+                FROM fin_receipt h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <when test="bizType == 'PAYMENT'">
+                h.id, h.payment_no, h.biz_date, h.supplier_id,
+                h.account_id, h.amount,
+                NULL, NULL, 10, 0
+                FROM fin_payment h WHERE h.deleted = 0 AND h.id = #{id}
+            </when>
+            <otherwise>
+                NULL, NULL, NULL, NULL,
+                NULL, NULL,
+                NULL, NULL, 0, 0
+                FROM DUAL WHERE 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- ============ 来源单据明细（采购/销售四类；发票与收付款无明细）============ -->
+    <select id="selectDocDetails" resultType="com.erp.finance.dto.vo.EngineDocDetailVO">
+        SELECT
+        <choose>
+            <when test="bizType == 'PUR_INSTOCK'">
+                d.qty, d.amount, d.tax_rate,
+                NULL, NULL, NULL
+                FROM pur_instock_detail d
+                WHERE d.deleted = 0 AND d.instock_id = #{id}
+            </when>
+            <when test="bizType == 'PUR_RET'">
+                d.qty, d.amount, d.tax_rate,
+                NULL, NULL, NULL
+                FROM pur_return_detail d
+                WHERE d.deleted = 0 AND d.return_id = #{id}
+            </when>
+            <when test="bizType == 'SAL_OUTSTOCK'">
+                d.qty, d.amount, 0,
+                d.actual_cost, NULL, NULL
+                FROM sal_outstock_detail d
+                WHERE d.deleted = 0 AND d.out_id = #{id}
+            </when>
+            <when test="bizType == 'SAL_RET'">
+                <!-- 退货成本=按退货数量分摊原出库行 actual_cost（originQty/originActualCost 来自原行） -->
+                d.qty, d.amount, 0,
+                NULL, od.qty, od.actual_cost
+                FROM sal_return_detail d
+                LEFT JOIN sal_outstock_detail od ON od.id = d.out_detail_id AND od.deleted = 0
+                WHERE d.deleted = 0 AND d.return_id = #{id}
+            </when>
+            <otherwise>
+                NULL, NULL, 0,
+                NULL, NULL, NULL
+                FROM DUAL WHERE 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- ============ 幂等键冲突处置（含逻辑删行，绕过 MP deleted 过滤）============ -->
+    <select id="selectAnyVoucherIdBySource" resultType="java.lang.Long">
+        SELECT id
+        FROM fin_voucher
+        WHERE book_id = #{bookId} AND source_type = #{bizType} AND source_id = #{bizId}
+        LIMIT 1
+    </select>
+
+    <!-- 释放软删行占用的 uk_voucher_source（仅 deleted=1 生效，业务侧不可见无副作用） -->
+    <update id="clearSourceOfDeletedVoucher">
+        UPDATE fin_voucher
+        SET source_type = NULL, source_id = NULL
+        WHERE id = #{voucherId} AND deleted = 1
+    </update>
+</mapper>

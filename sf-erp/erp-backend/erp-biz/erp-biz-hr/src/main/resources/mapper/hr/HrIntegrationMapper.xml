@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  跨模块集成网关 SQL —— 只读并行模块的约定列（结构以 docs/modules/hr.md 集成契约为准）：
+  sys_dept(id, parent_id, name, sort, status[1启用], deleted)
+  base_material(id, code, name, spec, status[1启用], deleted)
+  mrp_work_order(id, order_no, material_id, finish_qty, status, create_by, update_time, deleted)
+  约定变更需同步 docs/modules/hr.md。
+-->
+<mapper namespace="com.erp.hr.mapper.HrIntegrationMapper">
+
+    <select id="tableExists" resultType="int">
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = #{tableName}
+    </select>
+
+    <select id="selectDepts" resultType="com.erp.hr.dto.vo.DeptBriefVO">
+        SELECT id, parent_id AS parentId, name
+        FROM sys_dept
+        WHERE deleted = 0 AND status = 1
+        ORDER BY parent_id, sort, id
+    </select>
+
+    <select id="selectDeptName" resultType="string">
+        SELECT name
+        FROM sys_dept
+        WHERE id = #{id} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectMaterial" resultType="com.erp.hr.dto.vo.MaterialBriefVO">
+        SELECT id, code, name, spec
+        FROM base_material
+        WHERE id = #{id} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectMaterials" resultType="com.erp.hr.dto.vo.MaterialBriefVO">
+        SELECT id, code, name, spec
+        FROM base_material
+        WHERE deleted = 0 AND status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (code LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY id DESC
+        LIMIT 50
+    </select>
+
+    <!--
+      计件归集数据源：完工订单（FINISHED/CLOSED 且 finish_qty>0），期间按 update_time 近似；
+      NOT EXISTS 排除已被其他期间归集过的订单，防止同一完工量跨期重复计件。
+    -->
+    <select id="selectFinishedWorkOrders" resultType="com.erp.hr.dto.vo.WorkOrderSourceVO">
+        SELECT wo.id,
+               wo.order_no       AS orderNo,
+               wo.material_id    AS materialId,
+               wo.finish_qty     AS finishQty,
+               wo.create_by      AS createBy,
+               wo.update_time    AS updateTime
+        FROM mrp_work_order wo
+        WHERE wo.deleted = 0
+          AND wo.status IN ('FINISHED', 'CLOSED')
+          AND wo.finish_qty &gt; 0
+          AND DATE_FORMAT(wo.update_time, '%Y-%m') = #{period}
+          AND NOT EXISTS (
+              SELECT 1
+              FROM hr_piece_wage_detail pd
+              WHERE pd.deleted = 0
+                AND pd.work_order_id = wo.id
+                AND pd.period_id != #{periodId}
+          )
+        ORDER BY wo.id
+    </select>
+</mapper>

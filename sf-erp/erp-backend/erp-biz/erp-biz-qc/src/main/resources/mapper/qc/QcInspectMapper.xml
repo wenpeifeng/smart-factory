@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 检验单关联查询（分页）：带出物料/单位/供应商/套用模板名称（base_* 为约定只读表）。 -->
+<mapper namespace="com.erp.qc.mapper.QcInspectMapper">
+
+    <select id="selectInspectPage" resultType="com.erp.qc.dto.vo.QcInspectVO">
+        SELECT i.id,
+               i.inspect_no,
+               i.inspect_type,
+               i.source_type,
+               i.source_id,
+               i.source_no,
+               i.template_id,
+               t.template_name,
+               i.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               m.spec,
+               u.name AS unit,
+               i.supplier_id,
+               s.name AS supplier_name,
+               i.sample_qty,
+               i.qualified_qty,
+               i.unqualified_qty,
+               i.conclusion,
+               i.inspector_name,
+               i.inspect_date,
+               i.status,
+               i.submit_time,
+               i.remark,
+               i.create_time
+        FROM qc_inspect i
+        LEFT JOIN qc_template t ON t.id = i.template_id AND t.deleted = 0
+        LEFT JOIN base_material m ON m.id = i.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        LEFT JOIN base_supplier s ON s.id = i.supplier_id AND s.deleted = 0
+        <where>
+            i.deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (i.inspect_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR i.source_no LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.inspectType != null and q.inspectType != ''">AND i.inspect_type = #{q.inspectType}</if>
+            <if test="q.sourceType != null and q.sourceType != ''">AND i.source_type = #{q.sourceType}</if>
+            <if test="q.materialId != null">AND i.material_id = #{q.materialId}</if>
+            <if test="q.conclusion != null">AND i.conclusion = #{q.conclusion}</if>
+            <if test="q.status != null">AND i.status = #{q.status}</if>
+            <!-- 日期筛选按检验日期（草稿未检验无日期，设置了区间则草稿自然排除） -->
+            <if test="q.dateBegin != null">AND i.inspect_date &gt;= #{q.dateBegin}</if>
+            <if test="q.dateEnd != null">AND i.inspect_date &lt;= #{q.dateEnd}</if>
+        </where>
+        ORDER BY i.id DESC
+    </select>
+</mapper>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 其他出库单：分页（含行数/总数量统计） -->
+<mapper namespace="com.erp.inventory.mapper.InvOtherOutMapper">
+
+    <select id="selectDocPage" resultType="com.erp.inventory.dto.vo.OtherDocVO">
+        SELECT d.id,
+               d.no,
+               d.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               d.reason,
+               d.status,
+               d.audit_time,
+               d.remark,
+               (SELECT COUNT(*) FROM inv_other_out_line l
+                 WHERE l.other_out_id = d.id AND l.deleted = 0) AS line_count,
+               (SELECT COALESCE(SUM(l.qty), 0) FROM inv_other_out_line l
+                 WHERE l.other_out_id = d.id AND l.deleted = 0) AS total_qty,
+               d.create_time
+        FROM inv_other_out d
+                 LEFT JOIN base_warehouse w ON w.id = d.warehouse_id
+        WHERE d.deleted = 0
+        <if test="q.status != null">
+            AND d.status = #{q.status}
+        </if>
+        <if test="q.warehouseId != null">
+            AND d.warehouse_id = #{q.warehouseId}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND d.no LIKE CONCAT('%', #{q.keyword}, '%')
+        </if>
+        ORDER BY d.id DESC
+    </select>
+</mapper>

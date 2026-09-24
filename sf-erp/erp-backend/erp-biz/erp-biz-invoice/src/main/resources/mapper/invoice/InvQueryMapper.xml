@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  发票模块复杂查询：
+  1) 跨模块只读 —— 直接 SELECT sal_outstock / sal_outstock_detail / pur_instock /
+     pur_instock_detail / base_customer / base_supplier（并行协作约定：不 import 对方代码）。
+     客商表由 basedata V101 建，未落库时由 Service 层捕获 SQL 异常降级为"名称为空"。
+  2) 待开票 / 待登记清单 —— 已审核业务单 NOT EXISTS 未红冲蓝字发票（status IN (0,10)）
+     占用：待开票(0)/已开票(10) 占用配额，已红冲(20) 视为净额为 0、可重新开票。
+  3) 统计口径 —— status IN (10, 20)：待开票/待认证不计税；已红冲蓝票仍计入，
+     由红字负数票（status=10）自然冲减，净额正确。
+     销项按 invoice_date、进项税负按 auth_date 归属期间；月度走势两向均按 invoice_date。
+-->
+<mapper namespace="com.erp.invoice.mapper.InvQueryMapper">
+
+    <!-- 销售出库单头（只读） -->
+    <select id="selectOutstock" resultType="com.erp.invoice.dto.vo.OutstockRawVO">
+        SELECT id,
+               out_no        AS outNo,
+               customer_id   AS customerId,
+               out_date      AS outDate,
+               total_amount  AS totalAmount,
+               status
+        FROM sal_outstock
+        WHERE deleted = 0
+          AND id = #{id}
+    </select>
+
+    <!-- 出库明细不含税金额汇总（开票金额以此为准） -->
+    <select id="sumOutstockDetailAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount), 0)
+        FROM sal_outstock_detail
+        WHERE deleted = 0
+          AND out_id = #{outId}
+    </select>
+
+    <!-- 采购入库单头（只读） -->
+    <select id="selectInstock" resultType="com.erp.invoice.dto.vo.InstockRawVO">
+        SELECT id,
+               instock_no    AS instockNo,
+               supplier_id   AS supplierId,
+               instock_date  AS instockDate,
+               total_amount  AS totalAmount,
+               status
+        FROM pur_instock
+        WHERE deleted = 0
+          AND id = #{id}
+    </select>
+
+    <!-- 入库明细去重税率（登记进项发票的默认税率推断：唯一非 0 税率才采用） -->
+    <select id="selectInstockDetailTaxRates" resultType="java.math.BigDecimal">
+        SELECT DISTINCT tax_rate
+        FROM pur_instock_detail
+        WHERE deleted = 0
+          AND instock_id = #{instockId}
+    </select>
+
+    <!-- 客户待开票清单：已审核出库 − 未红冲蓝字发票占用；金额 = 明细汇总（回退单头）。
+         注意：record 构造器按列序位置映射，customerName 列输出 NULL 占位、由 Service 回填 -->
+    <select id="selectToBeInvoicedOutstocks" resultType="com.erp.invoice.dto.vo.ToBeInvoicedVO">
+        SELECT o.id          AS outstockId,
+               o.out_no      AS outNo,
+               o.customer_id AS customerId,
+               NULL          AS customerName,
+               o.out_date    AS outDate,
+               COALESCE(d.sum_amount, o.total_amount) AS amount
+        FROM sal_outstock o
+                 LEFT JOIN (SELECT out_id, SUM(amount) AS sum_amount
+                            FROM sal_outstock_detail
+                            WHERE deleted = 0
+                            GROUP BY out_id) d ON d.out_id = o.id
+        WHERE o.deleted = 0
+          AND o.status = 10
+        <if test="customerId != null">
+            AND o.customer_id = #{customerId}
+        </if>
+          AND NOT EXISTS (SELECT 1
+                          FROM inv_sales_invoice i
+                          WHERE i.deleted = 0
+                            AND i.biz_type = 'SAL_OUTSTOCK'
+                            AND i.biz_id = o.id
+                            AND i.red_flag = 0
+                            AND i.status IN (0, 10))
+        ORDER BY o.out_date DESC, o.id DESC
+    </select>
+
+    <!-- 供应商待登记清单：已审核入库 − 未红冲蓝字发票占用。
+         注意：record 构造器按列序位置映射，supplierName 列输出 NULL 占位、由 Service 回填 -->
+    <select id="selectToBeRegisteredInstocks" resultType="com.erp.invoice.dto.vo.ToBeRegisteredVO">
+        SELECT p.id           AS instockId,
+               p.instock_no   AS instockNo,
+               p.supplier_id  AS supplierId,
+               NULL           AS supplierName,
+               p.instock_date AS instockDate,
+               p.total_amount AS amount
+        FROM pur_instock p
+        WHERE p.deleted = 0
+          AND p.status = 10
+        <if test="supplierId != null">
+            AND p.supplier_id = #{supplierId}
+        </if>
+          AND NOT EXISTS (SELECT 1
+                          FROM inv_purchase_invoice i
+                          WHERE i.deleted = 0
+                            AND i.biz_type = 'PUR_INSTOCK'
+                            AND i.biz_id = p.id
+                            AND i.red_flag = 0
+                            AND i.status IN (0, 10))
+        ORDER BY p.instock_date DESC, p.id DESC
+    </select>
+
+    <!-- 客商名称（Service 层降级：表未落库时名称返回 null） -->
+    <select id="selectCustomerRows" resultType="java.util.HashMap">
+        SELECT id, name
+        FROM base_customer
+        WHERE deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectSupplierRows" resultType="java.util.HashMap">
+        SELECT id, name
+        FROM base_supplier
+        WHERE deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- 期间销项聚合（口径：status IN (10,20)，红字负数自然冲减） -->
+    <select id="selectSalesTaxStat" resultType="com.erp.invoice.dto.vo.TaxStatRawVO">
+        SELECT COALESCE(SUM(amount), 0)      AS amountSum,
+               COALESCE(SUM(tax_amount), 0)  AS taxSum
+        FROM inv_sales_invoice
+        WHERE deleted = 0
+          AND status IN (10, 20)
+          AND invoice_date BETWEEN #{from} AND #{to}
+    </select>
+
+    <!-- 期间进项聚合（口径：status IN (10,20)，按认证日期归属） -->
+    <select id="selectPurchaseTaxStat" resultType="com.erp.invoice.dto.vo.TaxStatRawVO">
+        SELECT COALESCE(SUM(amount), 0)      AS amountSum,
+               COALESCE(SUM(tax_amount), 0)  AS taxSum
+        FROM inv_purchase_invoice
+        WHERE deleted = 0
+          AND status IN (10, 20)
+          AND auth_date BETWEEN #{from} AND #{to}
+    </select>
+
+    <!-- 年度销项月度价税（按开票日期分月） -->
+    <select id="selectSalesMonthly" resultType="com.erp.invoice.dto.vo.MonthlyRawVO">
+        SELECT MONTH(invoice_date)              AS month,
+               COALESCE(SUM(total_amount), 0)   AS totalSum,
+               COALESCE(SUM(tax_amount), 0)     AS taxSum
+        FROM inv_sales_invoice
+        WHERE deleted = 0
+          AND status IN (10, 20)
+          AND invoice_date BETWEEN #{from} AND #{to}
+        GROUP BY MONTH(invoice_date)
+    </select>
+
+    <!-- 年度进项月度价税（按开票日期分月） -->
+    <select id="selectPurchaseMonthly" resultType="com.erp.invoice.dto.vo.MonthlyRawVO">
+        SELECT MONTH(invoice_date)              AS month,
+               COALESCE(SUM(total_amount), 0)   AS totalSum,
+               COALESCE(SUM(tax_amount), 0)     AS taxSum
+        FROM inv_purchase_invoice
+        WHERE deleted = 0
+          AND status IN (10, 20)
+          AND invoice_date BETWEEN #{from} AND #{to}
+        GROUP BY MONTH(invoice_date)
+    </select>
+
+    <!-- 客户对账：业务侧（已审核出库，按出库日期） -->
+    <select id="sumCustomerOutstock" resultType="com.erp.invoice.dto.vo.BizStatRawVO">
+        SELECT COUNT(*)                    AS cnt,
+               COALESCE(SUM(total_amount), 0) AS amountSum
+        FROM sal_outstock
+        WHERE deleted = 0
+          AND status = 10
+          AND customer_id = #{partnerId}
+          AND out_date BETWEEN #{from} AND #{to}
+    </select>
+
+    <!-- 客户对账：开票侧（已生效销项发票净额，按开票日期） -->
+    <select id="sumSalesInvoiced" resultType="com.erp.invoice.dto.vo.BizStatRawVO">
+        SELECT COUNT(*)                    AS cnt,
+               COALESCE(SUM(amount), 0)    AS amountSum
+        FROM inv_sales_invoice
+        WHERE deleted = 0
+          AND status IN (10, 20)
+          AND customer_id = #{partnerId}
+          AND invoice_date BETWEEN #{from} AND #{to}
+    </select>
+
+    <!-- 供应商对账：业务侧（已审核入库，按入库日期） -->
+    <select id="sumSupplierInstock" resultType="com.erp.invoice.dto.vo.BizStatRawVO">
+        SELECT COUNT(*)                    AS cnt,
+               COALESCE(SUM(total_amount), 0) AS amountSum
+        FROM pur_instock
+        WHERE deleted = 0
+          AND status = 10
+          AND supplier_id = #{partnerId}
+          AND instock_date BETWEEN #{from} AND #{to}
+    </select>
+
+    <!-- 供应商对账：开票侧（已生效进项发票净额，按开票日期） -->
+    <select id="sumPurchaseInvoiced" resultType="com.erp.invoice.dto.vo.BizStatRawVO">
+        SELECT COUNT(*)                    AS cnt,
+               COALESCE(SUM(amount), 0)    AS amountSum
+        FROM inv_purchase_invoice
+        WHERE deleted = 0
+          AND status IN (10, 20)
+          AND supplier_id = #{partnerId}
+          AND invoice_date BETWEEN #{from} AND #{to}
+    </select>
+</mapper>

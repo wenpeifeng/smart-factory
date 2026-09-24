@@ -1,0 +1,627 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  报表中心跨模块聚合 SQL（全部只读）。
+  约定：
+  * 不 import 业务模块代码，只按各模块建表脚本的约定列做 JOIN 聚合；
+  * 单据口径只统计「已审核」：sal_outstock.status=10 / pur_instock.status=10 /
+    fin_voucher.status='POSTED' / mrp_work_order.status='FINISHED'；
+  * 日期区间一律半开区间 [from, to)，避免 BETWEEN 含端点导致的跨月重复统计；
+  * SUM 全部 COALESCE(...,0) 兜底；金额 DECIMAL(18,2)、数量 DECIMAL(18,4)；
+  * 索引友好：驱动表按 idx_out_date / idx_instock_date / idx_voucher_date /
+    (material_id, warehouse_id, create_time) 等已建索引过滤。
+-->
+<mapper namespace="com.erp.report.mapper.ReportMapper">
+
+    <!-- ==================== 驾驶舱：本期/环比基础指标 ==================== -->
+
+    <select id="sumSalesAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM sal_outstock
+        WHERE deleted = 0 AND status = 10
+          AND out_date &gt;= #{from} AND out_date &lt; #{to}
+    </select>
+
+    <select id="sumPurchaseAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM pur_instock
+        WHERE deleted = 0 AND status = 10
+          AND instock_date &gt;= #{from} AND instock_date &lt; #{to}
+    </select>
+
+    <!-- 财务汇总降级口径的业务成本：已审核出库数量 × base_material.ref_cost -->
+    <select id="sumSalesRefCost" resultType="java.math.BigDecimal">
+        SELECT ROUND(COALESCE(SUM(d.qty * COALESCE(m.ref_cost, 0)), 0), 2)
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+          AND o.out_date &gt;= #{from} AND o.out_date &lt; #{to}
+    </select>
+
+    <!-- 应收/应付余额为当前时点快照：核销回写 settled_amount，不回溯历史期间 -->
+    <select id="sumReceivableBalance" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount - settled_amount), 0)
+        FROM fin_receivable
+        WHERE deleted = 0
+    </select>
+
+    <select id="sumPayableBalance" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount - settled_amount), 0)
+        FROM fin_payable
+        WHERE deleted = 0
+    </select>
+
+    <!-- 并行模块约定表存在性检查（information_schema，当前库） -->
+    <select id="countTableExists" resultType="int">
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = #{table}
+    </select>
+
+    <!-- 工作流待办（约定表 wf_task；未建表时 Service 层先探测再调用本查询） -->
+    <select id="countPendingTasks" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM wf_task
+        WHERE deleted = 0 AND status = 'PENDING'
+    </select>
+
+    <!-- 库存预警数：与 inventory 模块 /inventory/warnings 完全同口径
+         （行 = base_material LEFT JOIN inv_stock 仓库×物料，无库存按 0 计） -->
+    <select id="countStockWarnings" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM base_material m
+        LEFT JOIN inv_stock s ON s.material_id = m.id AND s.deleted = 0
+        WHERE m.deleted = 0
+          AND m.safety_stock IS NOT NULL
+          AND COALESCE(s.qty, 0) &lt; m.safety_stock
+    </select>
+
+    <!-- 生产完工数：mrp_work_order 无完工日期列，以「本期有过完工动作（update_time 落期）」的
+         订单 finish_qty 现值合计近似；部分完工（PRODUCING）的良品数也计入本期完工 -->
+    <select id="sumWorkOrderFinishQty" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(finish_qty), 0)
+        FROM mrp_work_order
+        WHERE deleted = 0
+          AND finish_qty &gt; 0
+          AND update_time &gt;= #{from} AND update_time &lt; #{to}
+    </select>
+
+    <select id="monthlySalesTrend" resultType="map">
+        SELECT DATE_FORMAT(out_date, '%Y-%m') AS `month`,
+               COALESCE(SUM(total_amount), 0)  AS amount
+        FROM sal_outstock
+        WHERE deleted = 0 AND status = 10
+          AND out_date &gt;= #{from}
+        GROUP BY DATE_FORMAT(out_date, '%Y-%m')
+    </select>
+
+    <select id="monthlyPurchaseTrend" resultType="map">
+        SELECT DATE_FORMAT(instock_date, '%Y-%m') AS `month`,
+               COALESCE(SUM(total_amount), 0)    AS amount
+        FROM pur_instock
+        WHERE deleted = 0 AND status = 10
+          AND instock_date &gt;= #{from}
+        GROUP BY DATE_FORMAT(instock_date, '%Y-%m')
+    </select>
+
+    <!-- 库存价值明细：加权价 = 全部已审核采购入库 SUM(qty*price)/SUM(qty)；
+         无采购记录回退 ref_cost（与销售统计成本口径一致），再无则 0 -->
+    <select id="inventoryValueRows" resultType="map">
+        SELECT s.warehouse_id                          AS warehouseId,
+               w.name                                  AS warehouseName,
+               s.material_id                           AS materialId,
+               m.code                                  AS materialCode,
+               m.name                                  AS materialName,
+               s.qty                                   AS qty,
+               ROUND(COALESCE(p.avg_price, m.ref_cost, 0), 4)          AS price,
+               ROUND(s.qty * COALESCE(p.avg_price, m.ref_cost, 0), 2) AS value
+        FROM inv_stock s
+        LEFT JOIN base_warehouse w ON w.id = s.warehouse_id AND w.deleted = 0
+        LEFT JOIN base_material m ON m.id = s.material_id AND m.deleted = 0
+        LEFT JOIN (
+            SELECT d.material_id,
+                   SUM(d.qty * d.price) / NULLIF(SUM(d.qty), 0) AS avg_price
+            FROM pur_instock_detail d
+            JOIN pur_instock h ON h.id = d.instock_id AND h.deleted = 0 AND h.status = 10
+            WHERE d.deleted = 0
+            GROUP BY d.material_id
+        ) p ON p.material_id = s.material_id
+        WHERE s.deleted = 0 AND s.qty &gt; 0
+        ORDER BY s.warehouse_id, m.code
+    </select>
+
+    <!-- 当月销售 TOP 物料（TOP N 由参数控制） -->
+    <select id="salesTopMaterials" resultType="map">
+        SELECT d.material_id                 AS materialId,
+               m.code                        AS materialCode,
+               m.name                        AS materialName,
+               COALESCE(SUM(d.amount), 0)    AS amount,
+               COALESCE(SUM(d.qty), 0)       AS qty
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+          AND o.out_date &gt;= #{from} AND o.out_date &lt; #{to}
+        GROUP BY d.material_id, m.code, m.name
+        ORDER BY amount DESC, d.material_id
+        LIMIT #{limit}
+    </select>
+
+    <!-- ==================== 多维报表：销售明细（数量/不含税额/参考成本/毛利） ==================== -->
+
+    <select id="salesDetailByMaterial" resultType="map">
+        SELECT m.code                                                AS dimCode,
+               m.name                                                AS dimName,
+               COALESCE(SUM(d.qty), 0)                               AS qty,
+               COALESCE(SUM(d.amount), 0)                            AS amount,
+               ROUND(COALESCE(SUM(d.qty * COALESCE(m.ref_cost, 0)), 0), 2)     AS costAmount,
+               ROUND(COALESCE(SUM(d.amount - d.qty * COALESCE(m.ref_cost, 0)), 0), 2) AS profitAmount
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.out_date &gt;= #{from}</if>
+        <if test="to != null">AND o.out_date &lt; #{to}</if>
+        <if test="customerId != null">AND o.customer_id = #{customerId}</if>
+        GROUP BY d.material_id, m.code, m.name
+        ORDER BY amount DESC, d.material_id
+    </select>
+
+    <select id="salesDetailByCustomer" resultType="map">
+        SELECT c.code                     AS dimCode,
+               c.name                     AS dimName,
+               COALESCE(SUM(d.qty), 0)    AS qty,
+               COALESCE(SUM(d.amount), 0) AS amount,
+               ROUND(COALESCE(SUM(d.qty * COALESCE(m.ref_cost, 0)), 0), 2)     AS costAmount,
+               ROUND(COALESCE(SUM(d.amount - d.qty * COALESCE(m.ref_cost, 0)), 0), 2) AS profitAmount
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.out_date &gt;= #{from}</if>
+        <if test="to != null">AND o.out_date &lt; #{to}</if>
+        <if test="customerId != null">AND o.customer_id = #{customerId}</if>
+        GROUP BY o.customer_id, c.code, c.name
+        ORDER BY amount DESC, o.customer_id
+    </select>
+
+    <select id="salesDetailByMonth" resultType="map">
+        SELECT DATE_FORMAT(o.out_date, '%Y-%m') AS dimCode,
+               DATE_FORMAT(o.out_date, '%Y-%m') AS dimName,
+               COALESCE(SUM(d.qty), 0)          AS qty,
+               COALESCE(SUM(d.amount), 0)       AS amount,
+               ROUND(COALESCE(SUM(d.qty * COALESCE(m.ref_cost, 0)), 0), 2)     AS costAmount,
+               ROUND(COALESCE(SUM(d.amount - d.qty * COALESCE(m.ref_cost, 0)), 0), 2) AS profitAmount
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.out_date &gt;= #{from}</if>
+        <if test="to != null">AND o.out_date &lt; #{to}</if>
+        <if test="customerId != null">AND o.customer_id = #{customerId}</if>
+        GROUP BY DATE_FORMAT(o.out_date, '%Y-%m')
+        ORDER BY dimCode
+    </select>
+
+    <!-- ==================== 多维报表：采购明细（数量/含税价税合计） ==================== -->
+
+    <select id="purchaseDetailByMaterial" resultType="map">
+        SELECT m.code                     AS dimCode,
+               m.name                     AS dimName,
+               COALESCE(SUM(d.qty), 0)    AS qty,
+               COALESCE(SUM(d.amount), 0) AS amount
+        FROM pur_instock o
+        JOIN pur_instock_detail d ON d.instock_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.instock_date &gt;= #{from}</if>
+        <if test="to != null">AND o.instock_date &lt; #{to}</if>
+        <if test="supplierId != null">AND o.supplier_id = #{supplierId}</if>
+        GROUP BY d.material_id, m.code, m.name
+        ORDER BY amount DESC, d.material_id
+    </select>
+
+    <select id="purchaseDetailBySupplier" resultType="map">
+        SELECT c.code                     AS dimCode,
+               c.name                     AS dimName,
+               COALESCE(SUM(d.qty), 0)    AS qty,
+               COALESCE(SUM(d.amount), 0) AS amount
+        FROM pur_instock o
+        JOIN pur_instock_detail d ON d.instock_id = o.id AND d.deleted = 0
+        LEFT JOIN base_supplier c ON c.id = o.supplier_id AND c.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.instock_date &gt;= #{from}</if>
+        <if test="to != null">AND o.instock_date &lt; #{to}</if>
+        <if test="supplierId != null">AND o.supplier_id = #{supplierId}</if>
+        GROUP BY o.supplier_id, c.code, c.name
+        ORDER BY amount DESC, o.supplier_id
+    </select>
+
+    <select id="purchaseDetailByMonth" resultType="map">
+        SELECT DATE_FORMAT(o.instock_date, '%Y-%m') AS dimCode,
+               DATE_FORMAT(o.instock_date, '%Y-%m') AS dimName,
+               COALESCE(SUM(d.qty), 0)              AS qty,
+               COALESCE(SUM(d.amount), 0)           AS amount
+        FROM pur_instock o
+        JOIN pur_instock_detail d ON d.instock_id = o.id AND d.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.instock_date &gt;= #{from}</if>
+        <if test="to != null">AND o.instock_date &lt; #{to}</if>
+        <if test="supplierId != null">AND o.supplier_id = #{supplierId}</if>
+        GROUP BY DATE_FORMAT(o.instock_date, '%Y-%m')
+        ORDER BY dimCode
+    </select>
+
+    <!-- ==================== 多维报表：库存库龄明细 ====================
+         库龄锚点 = 该仓物料最后一次「正数」流水时间（qty>0 即入库方向，含
+         PUR_IN/OTH_IN/ADJUST 正向/MOVE 入仓侧）；分桶在 Java 层完成。 -->
+    <select id="inventoryAgingRows" resultType="map">
+        SELECT s.warehouse_id                              AS warehouseId,
+               w.name                                      AS warehouseName,
+               s.material_id                               AS materialId,
+               m.code                                      AS materialCode,
+               m.name                                      AS materialName,
+               s.qty                                       AS qty,
+               ROUND(COALESCE(p.avg_price, m.ref_cost, 0), 4)          AS price,
+               ROUND(s.qty * COALESCE(p.avg_price, m.ref_cost, 0), 2) AS value,
+               DATE_FORMAT(mv.last_in_time, '%Y-%m-%d %H:%i') AS lastInTime,
+               DATEDIFF(CURDATE(), DATE(mv.last_in_time))  AS ageDays
+        FROM inv_stock s
+        LEFT JOIN base_warehouse w ON w.id = s.warehouse_id AND w.deleted = 0
+        LEFT JOIN base_material m ON m.id = s.material_id AND m.deleted = 0
+        LEFT JOIN (
+            SELECT d.material_id,
+                   SUM(d.qty * d.price) / NULLIF(SUM(d.qty), 0) AS avg_price
+            FROM pur_instock_detail d
+            JOIN pur_instock h ON h.id = d.instock_id AND h.deleted = 0 AND h.status = 10
+            WHERE d.deleted = 0
+            GROUP BY d.material_id
+        ) p ON p.material_id = s.material_id
+        LEFT JOIN (
+            SELECT material_id, warehouse_id, MAX(create_time) AS last_in_time
+            FROM inv_movement
+            WHERE deleted = 0 AND qty &gt; 0
+            GROUP BY material_id, warehouse_id
+        ) mv ON mv.material_id = s.material_id AND mv.warehouse_id = s.warehouse_id
+        WHERE s.deleted = 0 AND s.qty &gt; 0
+        ORDER BY m.code, s.warehouse_id
+    </select>
+
+    <!-- ==================== 多维报表：财务汇总 ==================== -->
+
+    <select id="countPostedVouchers" resultType="int">
+        SELECT COUNT(*)
+        FROM fin_voucher
+        WHERE deleted = 0 AND status = 'POSTED'
+          AND voucher_date &gt;= #{from} AND voucher_date &lt; #{to}
+    </select>
+
+    <!-- POSTED 凭证 × 科目前缀（6001 收入贷方 / 6401 成本借方）发生额合计 -->
+    <select id="sumVoucherSubjectAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(CASE WHEN #{side} = 'DEBIT' THEN e.debit_amount ELSE e.credit_amount END), 0)
+        FROM fin_voucher_entry e
+        JOIN fin_voucher v ON v.id = e.voucher_id AND v.deleted = 0 AND v.status = 'POSTED'
+        JOIN fin_subject s ON s.id = e.subject_id AND s.deleted = 0
+        WHERE e.deleted = 0
+          AND s.code LIKE CONCAT(#{prefix}, '%')
+          AND v.voucher_date &gt;= #{from} AND v.voucher_date &lt; #{to}
+    </select>
+
+    <!-- 期间现金流（fin_account_flow 净额 = 收入合计 − 支出合计） -->
+    <select id="cashFlowTotal" resultType="map">
+        SELECT COALESCE(SUM(CASE WHEN direction = 'INCOME' THEN amount ELSE 0 END), 0)  AS inAmount,
+               COALESCE(SUM(CASE WHEN direction = 'EXPENSE' THEN amount ELSE 0 END), 0) AS outAmount
+        FROM fin_account_flow
+        WHERE deleted = 0
+          AND biz_date &gt;= #{from} AND biz_date &lt; #{to}
+    </select>
+
+    <!-- ==================== 经营月报 ==================== -->
+
+    <!-- 当月产量（销量数量口径）：已审核销售出库明细数量合计 -->
+    <select id="sumSalesQty" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(d.qty), 0)
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+          AND o.out_date &gt;= #{from} AND o.out_date &lt; #{to}
+    </select>
+
+    <!-- 当月完工工单数：区间内有过完工动作（update_time 落期且 finish_qty&gt;0）的工单数 -->
+    <select id="countFinishedWorkOrders" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM mrp_work_order
+        WHERE deleted = 0
+          AND finish_qty &gt; 0
+          AND update_time &gt;= #{from} AND update_time &lt; #{to}
+    </select>
+
+    <!-- ==================== 销售毛利分析（成本 actual_cost，历史行回退 ref_cost） ==================== -->
+
+    <select id="salesMarginByMaterial" resultType="map">
+        SELECT m.code                                                       AS dimCode,
+               m.name                                                       AS dimName,
+               COALESCE(SUM(d.qty), 0)                                      AS qty,
+               COALESCE(SUM(d.amount), 0)                                   AS amount,
+               ROUND(COALESCE(SUM(COALESCE(d.actual_cost,
+                       d.qty * COALESCE(m.ref_cost, 0))), 0), 2)             AS costAmount,
+               ROUND(COALESCE(SUM(d.amount - COALESCE(d.actual_cost,
+                       d.qty * COALESCE(m.ref_cost, 0))), 0), 2)             AS profitAmount
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.out_date &gt;= #{from}</if>
+        <if test="to != null">AND o.out_date &lt; #{to}</if>
+        GROUP BY d.material_id, m.code, m.name
+        ORDER BY amount DESC, d.material_id
+    </select>
+
+    <select id="salesMarginByCustomer" resultType="map">
+        SELECT c.code                                                       AS dimCode,
+               c.name                                                       AS dimName,
+               COALESCE(SUM(d.qty), 0)                                      AS qty,
+               COALESCE(SUM(d.amount), 0)                                   AS amount,
+               ROUND(COALESCE(SUM(COALESCE(d.actual_cost,
+                       d.qty * COALESCE(m.ref_cost, 0))), 0), 2)             AS costAmount,
+               ROUND(COALESCE(SUM(d.amount - COALESCE(d.actual_cost,
+                       d.qty * COALESCE(m.ref_cost, 0))), 0), 2)             AS profitAmount
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_customer c ON c.id = o.customer_id AND c.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id AND m.deleted = 0
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null">AND o.out_date &gt;= #{from}</if>
+        <if test="to != null">AND o.out_date &lt; #{to}</if>
+        GROUP BY o.customer_id, c.code, c.name
+        ORDER BY amount DESC, o.customer_id
+    </select>
+
+    <!-- ==================== 供应商绩效（采购额/订单数/到货及时率/质检合格率） ==================== -->
+
+    <select id="supplierPerformanceRows" resultType="map">
+        SELECT s.id                                     AS supplierId,
+               s.code                                   AS supplierCode,
+               s.name                                   AS supplierName,
+               COALESCE(a.order_count, 0)               AS orderCount,
+               COALESCE(a.order_amount, 0)              AS orderAmount,
+               COALESCE(b.instock_amount, 0)            AS instockAmount,
+               b.receipt_line_count                     AS receiptLineCount,
+               b.on_time_line_count                     AS onTimeLineCount,
+               c.sample_qty                             AS sampleQty,
+               c.qualified_qty                          AS qualifiedQty
+        FROM base_supplier s
+        LEFT JOIN (
+            SELECT po.supplier_id,
+                   COUNT(*)                  AS order_count,
+                   COALESCE(SUM(po.total_amount), 0) AS order_amount
+            FROM pur_order po
+            WHERE po.deleted = 0 AND po.status IN (10, 20, 30)
+            <if test="from != null">AND po.order_date &gt;= #{from}</if>
+            <if test="to != null">AND po.order_date &lt; #{to}</if>
+            GROUP BY po.supplier_id
+        ) a ON a.supplier_id = s.id
+        LEFT JOIN (
+            SELECT i.supplier_id,
+                   COALESCE(SUM(i.total_amount), 0) AS instock_amount,
+                   COUNT(*)                         AS receipt_line_count,
+                   SUM(CASE WHEN i.instock_date &lt;= COALESCE(pod.delivery_date, po.order_date)
+                            THEN 1 ELSE 0 END)      AS on_time_line_count
+            FROM pur_instock i
+            JOIN pur_instock_detail d ON d.instock_id = i.id AND d.deleted = 0
+            JOIN pur_order po ON po.id = i.order_id AND po.deleted = 0
+            LEFT JOIN pur_order_detail pod ON pod.id = d.order_detail_id AND pod.deleted = 0
+            WHERE i.deleted = 0 AND i.status = 10
+            <if test="from != null">AND i.instock_date &gt;= #{from}</if>
+            <if test="to != null">AND i.instock_date &lt; #{to}</if>
+            GROUP BY i.supplier_id
+        ) b ON b.supplier_id = s.id
+        LEFT JOIN (
+            SELECT q.supplier_id,
+                   COALESCE(SUM(q.sample_qty), 0)    AS sample_qty,
+                   COALESCE(SUM(q.qualified_qty), 0) AS qualified_qty
+            FROM qc_inspect q
+            WHERE q.deleted = 0 AND q.source_type = 'pur_instock'
+            <if test="from != null">AND q.inspect_date &gt;= #{from}</if>
+            <if test="to != null">AND q.inspect_date &lt; #{to}</if>
+            GROUP BY q.supplier_id
+        ) c ON c.supplier_id = s.id
+        WHERE s.deleted = 0
+          AND (a.order_count IS NOT NULL OR b.instock_amount IS NOT NULL OR c.sample_qty IS NOT NULL)
+        ORDER BY instockAmount DESC, s.id
+    </select>
+
+    <!-- ==================== 收发存月报（金额取 cost_flow 期间汇总） ====================
+         期初 = period &lt; 月的全部流水累计；入库/出库 = 当月正/负方向流水；
+         期末 = 期初 + 入 − 出（Java 计算并保证守恒）。仅 cost_flow 有流水的物料出现。 -->
+    <select id="inventoryMonthlyRows" resultType="map">
+        SELECT m.id    AS materialId,
+               m.code  AS materialCode,
+               m.name  AS materialName,
+               u.name  AS unitName,
+               COALESCE(SUM(CASE WHEN cf.period &lt; #{period} THEN cf.qty ELSE 0 END), 0)    AS beginQty,
+               COALESCE(SUM(CASE WHEN cf.period &lt; #{period} THEN cf.amount ELSE 0 END), 0) AS beginAmount,
+               COALESCE(SUM(CASE WHEN cf.period = #{period} AND cf.qty &gt; 0 THEN cf.qty ELSE 0 END), 0)    AS inQty,
+               COALESCE(SUM(CASE WHEN cf.period = #{period} AND cf.qty &gt; 0 THEN cf.amount ELSE 0 END), 0) AS inAmount,
+               COALESCE(SUM(CASE WHEN cf.period = #{period} AND cf.qty &lt; 0 THEN -cf.qty ELSE 0 END), 0)    AS outQty,
+               COALESCE(SUM(CASE WHEN cf.period = #{period} AND cf.qty &lt; 0 THEN -cf.amount ELSE 0 END), 0) AS outAmount
+        FROM cost_flow cf
+        JOIN base_material m ON m.id = cf.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        WHERE cf.deleted = 0
+          AND cf.period &lt;= #{period}
+        GROUP BY m.id, m.code, m.name, u.name
+        HAVING beginQty &lt;&gt; 0 OR inQty &lt;&gt; 0 OR outQty &lt;&gt; 0
+        ORDER BY m.code
+    </select>
+
+    <!-- ==================== 呆滞物料（现存量&gt;0 且 N 天无出库流水） ====================
+         物料粒度：现存量跨仓合计；库龄锚点 = 最后一次入库流水；无出库流水视为呆滞。 -->
+    <select id="sluggishMaterialRows" resultType="map">
+        SELECT s.material_id                                  AS materialId,
+               m.code                                         AS materialCode,
+               m.name                                         AS materialName,
+               u.name                                         AS unitName,
+               COALESCE(SUM(s.qty), 0)                        AS qty,
+               ROUND(MIN(COALESCE(p.avg_price, m.ref_cost, 0)), 4) AS price,
+               ROUND(COALESCE(SUM(s.qty * COALESCE(p.avg_price, m.ref_cost, 0)), 0), 2) AS value,
+               DATE_FORMAT(mv_in.last_in_time, '%Y-%m-%d')    AS lastInTime,
+               DATEDIFF(CURDATE(), DATE(mv_in.last_in_time))  AS ageDays,
+               DATE_FORMAT(mv_out.last_out_time, '%Y-%m-%d')  AS lastOutTime,
+               DATEDIFF(CURDATE(), DATE(mv_out.last_out_time)) AS daysSinceOut
+        FROM inv_stock s
+        LEFT JOIN base_material m ON m.id = s.material_id AND m.deleted = 0
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        LEFT JOIN (
+            SELECT d.material_id,
+                   SUM(d.qty * d.price) / NULLIF(SUM(d.qty), 0) AS avg_price
+            FROM pur_instock_detail d
+            JOIN pur_instock h ON h.id = d.instock_id AND h.deleted = 0 AND h.status = 10
+            WHERE d.deleted = 0
+            GROUP BY d.material_id
+        ) p ON p.material_id = s.material_id
+        LEFT JOIN (
+            SELECT material_id, MAX(create_time) AS last_in_time
+            FROM inv_movement
+            WHERE deleted = 0 AND qty &gt; 0
+            GROUP BY material_id
+        ) mv_in ON mv_in.material_id = s.material_id
+        LEFT JOIN (
+            SELECT material_id, MAX(create_time) AS last_out_time
+            FROM inv_movement
+            WHERE deleted = 0 AND qty &lt; 0
+            GROUP BY material_id
+        ) mv_out ON mv_out.material_id = s.material_id
+        WHERE s.deleted = 0 AND s.qty &gt; 0
+          AND (mv_out.last_out_time IS NULL OR DATEDIFF(CURDATE(), DATE(mv_out.last_out_time)) &gt;= #{days})
+        GROUP BY s.material_id, m.code, m.name, u.name,
+                 mv_in.last_in_time, mv_out.last_out_time
+        HAVING COALESCE(SUM(s.qty), 0) &gt; 0
+        ORDER BY value DESC, m.code
+    </select>
+
+    <!-- ==================== 订单执行跟踪（计划/完工/在制/完工率/超期标记） ==================== -->
+    <select id="workOrderExecutionRows" resultType="map">
+        SELECT wo.id                  AS orderId,
+               wo.order_no            AS orderNo,
+               m.code                 AS materialCode,
+               m.name                 AS materialName,
+               wo.qty                 AS planQty,
+               wo.finish_qty          AS finishQty,
+               wo.status              AS status,
+               DATE_FORMAT(wo.plan_start_date, '%Y-%m-%d') AS planStartDate,
+               DATE_FORMAT(wo.plan_end_date, '%Y-%m-%d')   AS planEndDate,
+               CASE WHEN wo.status NOT IN ('FINISHED', 'CLOSED')
+                     AND wo.plan_end_date IS NOT NULL
+                     AND wo.plan_end_date &lt; CURDATE()
+                    THEN 1 ELSE 0 END AS overdue
+        FROM mrp_work_order wo
+        LEFT JOIN base_material m ON m.id = wo.material_id AND m.deleted = 0
+        WHERE wo.deleted = 0
+        <if test="from != null">AND COALESCE(wo.plan_start_date, DATE(wo.create_time)) &gt;= #{from}</if>
+        <if test="to != null">AND COALESCE(wo.plan_start_date, DATE(wo.create_time)) &lt; #{to}</if>
+        ORDER BY overdue DESC, wo.order_no
+    </select>
+
+    <!-- ==================== 报工工时统计（工序/员工 × 合格数/不良数/工时） ==================== -->
+
+    <select id="workhoursByOperation" resultType="map">
+        SELECT op.code                          AS dimCode,
+               op.name                          AS dimName,
+               COUNT(DISTINCT wr.employee)      AS employeeCount,
+               COALESCE(SUM(wr.good_qty), 0)    AS goodQty,
+               COALESCE(SUM(wr.bad_qty), 0)     AS badQty,
+               COALESCE(SUM(wr.work_minutes), 0) AS workMinutes
+        FROM mrp_work_report wr
+        LEFT JOIN mrp_operation op ON op.id = wr.operation_id AND op.deleted = 0
+        WHERE wr.deleted = 0
+        <if test="from != null">AND wr.report_time &gt;= #{from}</if>
+        <if test="to != null">AND wr.report_time &lt; #{to}</if>
+        <if test="workCenterId != null">AND EXISTS (SELECT 1 FROM mrp_wo_step ws
+              WHERE ws.id = wr.wo_step_id AND ws.deleted = 0 AND ws.work_center_id = #{workCenterId})</if>
+        GROUP BY wr.operation_id, op.code, op.name
+        ORDER BY workMinutes DESC, wr.operation_id
+    </select>
+
+    <select id="workhoursByEmployee" resultType="map">
+        SELECT wr.employee                      AS dimCode,
+               wr.employee                      AS dimName,
+               COUNT(DISTINCT wr.operation_id)  AS operationCount,
+               COALESCE(SUM(wr.good_qty), 0)    AS goodQty,
+               COALESCE(SUM(wr.bad_qty), 0)     AS badQty,
+               COALESCE(SUM(wr.work_minutes), 0) AS workMinutes
+        FROM mrp_work_report wr
+        WHERE wr.deleted = 0
+        <if test="from != null">AND wr.report_time &gt;= #{from}</if>
+        <if test="to != null">AND wr.report_time &lt; #{to}</if>
+        <if test="workCenterId != null">AND EXISTS (SELECT 1 FROM mrp_wo_step ws
+              WHERE ws.id = wr.wo_step_id AND ws.deleted = 0 AND ws.work_center_id = #{workCenterId})</if>
+        GROUP BY wr.employee
+        ORDER BY workMinutes DESC, wr.employee
+    </select>
+
+    <!-- ==================== 材料损耗分析（工单 BOM 应耗 vs 实际领料） ====================
+         应耗 = 已审核领料单 should_qty 合计（BOM 应耗×领料倍数），实耗 = actual_qty 合计；
+         应耗为 0 的行无法计算超耗率（HAVING 跳过）。 -->
+    <select id="materialLossRows" resultType="map">
+        SELECT mi.work_order_id                      AS workOrderId,
+               wo.order_no                           AS orderNo,
+               iit.material_id                       AS materialId,
+               m.code                                AS materialCode,
+               m.name                                AS materialName,
+               COALESCE(SUM(iit.should_qty), 0)      AS shouldQty,
+               COALESCE(SUM(iit.actual_qty), 0)      AS actualQty
+        FROM mrp_material_issue mi
+        JOIN mrp_material_issue_item iit ON iit.issue_id = mi.id AND iit.deleted = 0
+        JOIN mrp_work_order wo ON wo.id = mi.work_order_id AND wo.deleted = 0
+        LEFT JOIN base_material m ON m.id = iit.material_id AND m.deleted = 0
+        WHERE mi.deleted = 0 AND mi.status = 'AUDITED'
+        <if test="from != null">AND mi.create_time &gt;= #{from}</if>
+        <if test="to != null">AND mi.create_time &lt; #{to}</if>
+        GROUP BY mi.work_order_id, wo.order_no, iit.material_id, m.code, m.name
+        HAVING COALESCE(SUM(iit.should_qty), 0) &gt; 0
+        ORDER BY wo.order_no, m.code
+    </select>
+
+    <!-- ==================== 费用分析（部门×科目 借方发生额，POSTED 凭证） ====================
+         部门维度 = 凭证制单人（create_by）所属部门（fin_voucher 无部门列，口径降级说明见模块文档）；
+         科目 = 损益类+成本类借方科目（5001/5101/6401/6601/6602/6603 等）。 -->
+    <select id="expenseRows" resultType="map">
+        SELECT COALESCE(u.dept_id, 0)         AS deptId,
+               COALESCE(d.name, '未分配部门') AS deptName,
+               s.code                         AS subjectCode,
+               s.name                         AS subjectName,
+               COALESCE(SUM(e.debit_amount), 0) AS amount
+        FROM fin_voucher_entry e
+        JOIN fin_voucher v ON v.id = e.voucher_id AND v.deleted = 0 AND v.status = 'POSTED'
+        JOIN fin_subject s ON s.id = e.subject_id AND s.deleted = 0
+        LEFT JOIN sys_user u ON u.id = v.create_by AND u.deleted = 0
+        LEFT JOIN sys_dept d ON d.id = u.dept_id AND d.deleted = 0
+        WHERE e.deleted = 0
+          AND s.direction = 'DEBIT'
+          AND s.category IN ('COST', 'PROFIT_LOSS')
+          AND v.voucher_date &gt;= #{from} AND v.voucher_date &lt; #{to}
+        GROUP BY u.dept_id, d.name, s.code, s.name
+        ORDER BY deptName, amount DESC, s.code
+    </select>
+
+    <!-- ==================== 计件工资汇总（员工×工序 产量/工资） ==================== -->
+    <select id="piecewageRows" resultType="map">
+        SELECT e.id                              AS employeeId,
+               e.emp_no                          AS empNo,
+               e.name                            AS employeeName,
+               d.process_name                    AS processName,
+               COALESCE(SUM(d.qty), 0)           AS qty,
+               COALESCE(SUM(d.amount), 0)        AS amount,
+               COUNT(DISTINCT d.work_order_id)   AS woCount
+        FROM hr_piece_wage w
+        JOIN hr_piece_wage_detail d ON d.period_id = w.id AND d.deleted = 0
+        LEFT JOIN hr_employee e ON e.id = d.employee_id AND e.deleted = 0
+        WHERE w.deleted = 0 AND w.period = #{period}
+        GROUP BY e.id, e.emp_no, e.name, d.process_name
+        ORDER BY e.emp_no, d.process_name
+    </select>
+
+</mapper>

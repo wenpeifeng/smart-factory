@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  设备模块库存扣减原语（约定表 inv_stock 的唯一写入口）。
+  与库存模块 InvStockMapper.deductStock 同语义（并行开发约定，不互相 import）：
+  条件 UPDATE 行锁扣减，qty + delta >= 0 才生效，0 行 = 无库存行或余额不足。
+-->
+<mapper namespace="com.erp.equipment.mapper.EqpInvStockMapper">
+
+    <!-- 条件扣减：delta 为负数；version 随每次变动 +1（乐观锁辅助排查信息） -->
+    <update id="deductStock">
+        UPDATE inv_stock
+        SET qty     = qty + #{delta},
+            version = version + 1
+        WHERE warehouse_id = #{warehouseId}
+          AND material_id = #{materialId}
+          AND deleted = 0
+          AND qty + #{delta} &gt;= 0
+    </update>
+</mapper>

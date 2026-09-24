@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  固定资产复杂查询：
+  1) 折旧期间行锁（FOR UPDATE）—— 事务内串行化同期间并发 run，配合 uk_period 与状态检查三重防重；
+  2) 部门 / 供应商名称 —— 直接读 sys_dept / base_supplier 表（跨模块只读，不 import 对方代码）；
+  3) 统计 —— 部门 / 类别维度汇总原值、截至期间累计折旧、净值；
+     口径：未逻辑删除 + 状态 != 处置 + 入账日期 <= 期间末；
+     截至期间累计折旧 = ast_depreciation_detail（period <= 给定期间）按资产汇总。
+-->
+<mapper namespace="com.erp.asset.mapper.AstQueryMapper">
+
+    <select id="selectPeriodForUpdate" resultType="com.erp.asset.entity.AstDepreciation">
+        SELECT id, period, status, voucher_id, asset_count, total_amount,
+               create_by, create_time, update_by, update_time, deleted
+        FROM ast_depreciation
+        WHERE period = #{period}
+          AND deleted = 0
+        FOR UPDATE
+    </select>
+
+    <select id="selectDeptNames" resultType="java.util.HashMap">
+        SELECT id, name
+        FROM sys_dept
+        WHERE deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectSupplierNames" resultType="java.util.HashMap">
+        SELECT id, name
+        FROM base_supplier
+        WHERE deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectStatsByDept" resultType="com.erp.asset.dto.vo.DeptStatsRawVO">
+        SELECT a.dept_id                                       AS deptId,
+               SUM(a.original_value)                           AS originalSum,
+               SUM(COALESCE(dd.dep_sum, 0))                    AS depSum,
+               SUM(a.original_value - COALESCE(dd.dep_sum, 0)) AS netSum
+        FROM ast_asset a
+                 LEFT JOIN (
+            SELECT det.asset_id, SUM(det.month_amount) AS dep_sum
+            FROM ast_depreciation_detail det
+                     INNER JOIN ast_depreciation p ON p.id = det.period_id
+                AND p.deleted = 0
+            WHERE det.deleted = 0
+              AND p.period &lt;= #{period}
+            GROUP BY det.asset_id
+        ) dd ON dd.asset_id = a.id
+        WHERE a.deleted = 0
+          AND a.status != 'DISPOSED'
+          AND a.account_date &lt;= #{periodEnd}
+        GROUP BY a.dept_id
+        ORDER BY originalSum DESC
+    </select>
+
+    <select id="selectStatsByCategory" resultType="com.erp.asset.dto.vo.CategoryStatsRawVO">
+        SELECT a.category_id                                    AS categoryId,
+               SUM(a.original_value)                            AS originalSum,
+               SUM(COALESCE(dd.dep_sum, 0))                     AS depSum,
+               SUM(a.original_value - COALESCE(dd.dep_sum, 0))  AS netSum
+        FROM ast_asset a
+                 LEFT JOIN (
+            SELECT det.asset_id, SUM(det.month_amount) AS dep_sum
+            FROM ast_depreciation_detail det
+                     INNER JOIN ast_depreciation p ON p.id = det.period_id
+                AND p.deleted = 0
+            WHERE det.deleted = 0
+              AND p.period &lt;= #{period}
+            GROUP BY det.asset_id
+        ) dd ON dd.asset_id = a.id
+        WHERE a.deleted = 0
+          AND a.status != 'DISPOSED'
+          AND a.account_date &lt;= #{periodEnd}
+        GROUP BY a.category_id
+        ORDER BY originalSum DESC
+    </select>
+</mapper>

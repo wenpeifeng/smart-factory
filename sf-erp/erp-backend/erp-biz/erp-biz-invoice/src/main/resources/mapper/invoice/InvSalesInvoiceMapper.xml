@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  销项发票状态流转：
+  1) 开票 0(待开票) → 10(已开票)，写开票日期/开票人/开票时间；
+  2) 红冲 10(已开票) → 20(已红冲)。
+  WHERE 携带旧状态的条件 UPDATE，防并发重复流转/跳跃流转（影响行数 0 即冲突）。
+-->
+<mapper namespace="com.erp.invoice.mapper.InvSalesInvoiceMapper">
+
+    <update id="issueInvoice">
+        UPDATE inv_sales_invoice
+        SET status        = 10,
+            invoice_date  = #{date},
+            issue_by      = #{issueBy},
+            issue_time    = #{now},
+            update_time   = NOW()
+        WHERE id = #{id}
+          AND status = 0
+          AND deleted = 0
+    </update>
+
+    <update id="reverseInvoice">
+        UPDATE inv_sales_invoice
+        SET status      = 20,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 10
+          AND deleted = 0
+    </update>
+</mapper>

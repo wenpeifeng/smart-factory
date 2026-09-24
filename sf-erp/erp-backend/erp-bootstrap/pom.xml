@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      erp-bootstrap：启动聚合模块。
+      唯一打包为可执行 jar 的模块：依赖全部业务模块，携带全局配置与启动类。
+      规则：业务代码不许写在这里，本模块只有启动类、配置、健康检查。
+    -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>erp-bootstrap</artifactId>
+    <name>erp-bootstrap</name>
+    <description>启动聚合模块：Spring Boot 启动类 + 全局配置</description>
+
+    <dependencies>
+        <!-- 聚合全部业务模块 -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-system</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-basedata</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-purchase</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-sales</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-inventory</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-finance</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-mrp</artifactId>
+        </dependency>
+        <!-- 二期新增：制造业闭环模块 -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-qc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-cost</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-workflow</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-notify</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-asset</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-hr</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-equipment</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-invoice</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-report</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-budget</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-org</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-integration</artifactId>
+        </dependency>
+
+        <!-- 数据库驱动（运行期） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- 数据库版本管理：建表脚本统一存放于 仓库根/script/sql/migration -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
+        <!-- 运维端点（健康检查等） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- JSON 结构化日志输出（logback-spring.xml 的 FILE/生产控制台 appender 使用）：
+             只在启动聚合模块引入，业务模块不感知日志实现，符合框架层收口原则 -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.1</version>
+        </dependency>
+
+        <!-- ================= 集成测试（关键链路 IT，代码仅在 src/test） =================
+             范围：src/test/java/com/erp/it 下 @Tag("it") 的 *IT 测试类，
+             覆盖 库存行锁/FIFO 拆批、成本移动加权、凭证借贷平衡、销售信用额度 四条核心链路。
+             隔离：MySQL 走 Testcontainers 随机端口容器（不碰本机 erp_db），跑完由 Ryuk 销毁；
+             Redis 仅用于单号自增序列（key 按天隔离，与业务数据无关）。
+             版本：testcontainers 由 Spring Boot 3.3 parent 的 BOM 管理（1.19.8）。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- IT 命名约定：*IT.java + @Tag("it")，本模块无单元测试，
+                 mvn test 即跑集成测试（-Dgroups=it 为同值兜底，可省略） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                    <groups>it</groups>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  维修工单备件明细 SQL：按工单查明细行。
+  跨模块约定：base_material 为 basedata 模块标准表，仅 LEFT JOIN 取编码/名称，不建物理外键。
+-->
+<mapper namespace="com.erp.equipment.mapper.EqpRepairItemMapper">
+
+    <select id="selectItemsByRepairId" resultType="com.erp.equipment.dto.vo.RepairDetailVO$ItemVO">
+        SELECT i.id,
+               i.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               i.qty,
+               i.cost_ref
+        FROM eqp_repair_item i
+                 LEFT JOIN base_material m ON m.id = i.material_id
+        WHERE i.deleted = 0
+          AND i.repair_id = #{repairId}
+        ORDER BY i.id
+    </select>
+</mapper>

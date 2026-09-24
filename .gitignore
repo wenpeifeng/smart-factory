@@ -1,0 +1,22 @@
+# 构建产物
+**/target/
+**/dist/
+**/build/
+
+# 依赖
+**/node_modules/
+
+# 日志
+**/logs/
+**/*.log
+script/logs/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+
+# 环境与敏感信息
+**/.env
+**/.env.*
+*.local

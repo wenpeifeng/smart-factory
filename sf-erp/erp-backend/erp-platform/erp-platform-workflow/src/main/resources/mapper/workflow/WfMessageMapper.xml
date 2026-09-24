@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 消息中心分页查询（接收人维度，支持类型/未读过滤）。 -->
+<mapper namespace="com.erp.workflow.mapper.WfMessageMapper">
+
+    <select id="selectMessagePage" resultType="com.erp.workflow.dto.vo.WfMessageVO">
+        SELECT m.id,
+               m.receiver_id,
+               m.msg_type,
+               m.title,
+               m.content,
+               m.biz_path,
+               m.read_flag,
+               m.read_time,
+               m.create_time
+        FROM wf_message m
+        <where>
+            m.deleted = 0
+            AND m.receiver_id = #{receiverId}
+            <if test="msgType != null and msgType != ''">AND m.msg_type = #{msgType}</if>
+            <if test="unreadOnly != null and unreadOnly">AND m.read_flag = 0</if>
+        </where>
+        ORDER BY m.id DESC
+    </select>
+</mapper>

@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  WMS 作业任务 SQL（V421）：任务分页 / 波次任务路径序 / 看板计数 /
+  扫描器候选（已审核未生成任务的出入库单）/ 推荐库位。
+  跨模块只读约定：pur_instock/sal_return/sal_outstock/mrp_work_order 为采购/销售/生产模块
+  标准表，此处只读（JOIN / NOT EXISTS），不 import 对方代码、不做物理外键——
+  与 inv_stock LEFT JOIN base_* 的约定一致；租户插件对全部 SQL 自动追加 tenant_id。
+-->
+<mapper namespace="com.erp.inventory.mapper.WmsTaskMapper">
+
+    <!-- 任务分页 -->
+    <select id="selectTaskPage" resultType="com.erp.inventory.dto.vo.WmsTaskVO">
+        SELECT t.id,
+               t.task_no,
+               t.task_type,
+               t.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               t.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               t.batch_no,
+               t.qty,
+               t.location_id,
+               l.code AS location_code,
+               t.from_location_id,
+               fl.code AS from_location_code,
+               t.wave_id,
+               v.wave_no,
+               t.source_type,
+               t.source_no,
+               t.assignee,
+               u.nickname AS assignee_name,
+               t.status,
+               t.recommend_reason,
+               t.finish_time,
+               t.remark,
+               t.create_time
+        FROM wms_task t
+                 LEFT JOIN base_warehouse w ON w.id = t.warehouse_id
+                 LEFT JOIN base_material m ON m.id = t.material_id
+                 LEFT JOIN base_location l ON l.id = t.location_id
+                 LEFT JOIN base_location fl ON fl.id = t.from_location_id
+                 LEFT JOIN wms_wave v ON v.id = t.wave_id
+                 LEFT JOIN sys_user u ON u.id = t.assignee AND u.deleted = 0
+        WHERE t.deleted = 0
+        <if test="q.taskType != null and q.taskType != ''">
+            AND t.task_type = #{q.taskType}
+        </if>
+        <if test="q.status != null">
+            AND t.status = #{q.status}
+        </if>
+        <if test="q.warehouseId != null">
+            AND t.warehouse_id = #{q.warehouseId}
+        </if>
+        <if test="q.assignee != null">
+            AND t.assignee = #{q.assignee}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (t.task_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR t.source_no LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.code LIKE CONCAT('%', #{q.keyword}, '%')
+                OR m.name LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        ORDER BY t.id DESC
+    </select>
+
+    <!-- 波次任务列表：拣选路径序 = 按库位编码升序（库位为空的排最后），同库位按任务号 -->
+    <select id="selectWaveTasks" resultType="com.erp.inventory.dto.vo.WmsTaskVO">
+        SELECT t.id,
+               t.task_no,
+               t.task_type,
+               t.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               t.material_id,
+               m.code AS material_code,
+               m.name AS material_name,
+               t.batch_no,
+               t.qty,
+               t.location_id,
+               l.code AS location_code,
+               t.from_location_id,
+               fl.code AS from_location_code,
+               t.wave_id,
+               v.wave_no,
+               t.source_type,
+               t.source_no,
+               t.assignee,
+               u.nickname AS assignee_name,
+               t.status,
+               t.recommend_reason,
+               t.finish_time,
+               t.remark,
+               t.create_time
+        FROM wms_task t
+                 LEFT JOIN base_warehouse w ON w.id = t.warehouse_id
+                 LEFT JOIN base_material m ON m.id = t.material_id
+                 LEFT JOIN base_location l ON l.id = t.location_id
+                 LEFT JOIN base_location fl ON fl.id = t.from_location_id
+                 LEFT JOIN wms_wave v ON v.id = t.wave_id
+                 LEFT JOIN sys_user u ON u.id = t.assignee AND u.deleted = 0
+        WHERE t.deleted = 0
+          AND t.wave_id = #{waveId}
+        ORDER BY (l.code IS NULL), l.code ASC, t.task_no ASC
+    </select>
+
+    <!-- 任务看板：按 (task_type, status) 分组计数 -->
+    <select id="selectBoard" resultType="java.util.HashMap">
+        SELECT t.task_type AS task_type,
+               t.status     AS status,
+               COUNT(*)     AS cnt
+        FROM wms_task t
+        WHERE t.deleted = 0
+          AND t.status &lt; 30
+        <if test="warehouseId != null">
+            AND t.warehouse_id = #{warehouseId}
+        </if>
+        GROUP BY t.task_type, t.status
+    </select>
+
+    <!-- ==================== 扫描器候选（只读约定表） ==================== -->
+
+    <!-- 上架候选：已审核未生成上架任务的入库单行（单据+物料+批次聚合）。
+         daysBack 只扫近 N 天审核/创建的单据，防止存量单据一次性涌入。 -->
+    <select id="selectPutawayCandidates" resultType="java.util.HashMap">
+        SELECT c.source_type, c.source_id, c.source_no, c.warehouse_id, c.material_id, c.batch_no, SUM(c.qty) AS qty
+        FROM (
+            <!-- 采购入库（status=10 已审核） -->
+            SELECT 'PUR_IN' AS source_type, h.id AS source_id, h.instock_no AS source_no,
+                   h.warehouse_id, d.material_id, d.batch_no, d.qty
+            FROM pur_instock h
+                     JOIN pur_instock_detail d ON d.instock_id = h.id AND d.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 10
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+            UNION ALL
+            <!-- 销售退货入库（status=10 已审核） -->
+            SELECT 'SAL_RET', h.id, h.return_no, h.warehouse_id, d.material_id, d.batch_no, d.qty
+            FROM sal_return h
+                     JOIN sal_return_detail d ON d.return_id = h.id AND d.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 10
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+            UNION ALL
+            <!-- 其他入库（本模块，status=1 已审核） -->
+            SELECT 'OTH_IN', h.id, h.no, h.warehouse_id, l.material_id, l.batch_no, l.qty
+            FROM inv_other_in h
+                     JOIN inv_other_in_line l ON l.other_in_id = h.id AND l.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 1
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+            UNION ALL
+            <!-- 生产完工入库（工单 FINISHED 且指定了入库仓；数量=合格完工量） -->
+            SELECT 'PROD_IN', w.id, w.order_no, w.warehouse_id, w.material_id, '', (w.finish_qty - w.bad_qty)
+            FROM mrp_work_order w
+            WHERE w.deleted = 0 AND w.status = 'FINISHED' AND w.warehouse_id IS NOT NULL
+              AND w.update_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+        ) c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM wms_task t
+            WHERE t.deleted = 0 AND t.status != 40
+              AND t.source_type = c.source_type AND t.source_id = c.source_id
+              AND t.material_id = c.material_id AND t.batch_no = c.batch_no)
+        GROUP BY c.source_type, c.source_id, c.source_no, c.warehouse_id, c.material_id, c.batch_no
+        LIMIT 200
+    </select>
+
+    <!-- 拣选候选：已审核未生成拣选任务的出库单行 -->
+    <select id="selectPickCandidates" resultType="java.util.HashMap">
+        SELECT c.source_type, c.source_id, c.source_no, c.warehouse_id, c.material_id, c.batch_no, SUM(c.qty) AS qty
+        FROM (
+            <!-- 销售出库（status=10 已审核；行无批次=按 FIFO 已扣，任务批次由推荐库位行决定） -->
+            SELECT 'SAL_OUT' AS source_type, h.id AS source_id, h.out_no AS source_no,
+                   h.warehouse_id, d.material_id, '' AS batch_no, d.qty
+            FROM sal_outstock h
+                     JOIN sal_outstock_detail d ON d.out_id = h.id AND d.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 10
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+            UNION ALL
+            <!-- 其他出库（本模块，status=1 已审核；行批次透传） -->
+            SELECT 'OTH_OUT', h.id, h.no, h.warehouse_id, l.material_id, l.batch_no, l.qty
+            FROM inv_other_out h
+                     JOIN inv_other_out_line l ON l.other_out_id = h.id AND l.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 1
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+        ) c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM wms_task t
+            WHERE t.deleted = 0 AND t.status != 40
+              AND t.source_type = c.source_type AND t.source_id = c.source_id
+              AND t.material_id = c.material_id AND t.batch_no = '')
+        GROUP BY c.source_type, c.source_id, c.source_no, c.warehouse_id, c.material_id, c.batch_no
+        LIMIT 200
+    </select>
+
+    <!-- 建波可选出库单：已审核且仍有行未生成拣选任务的出库单 -->
+    <select id="selectOutboundDocsForWave" resultType="com.erp.inventory.dto.vo.OutboundDocVO">
+        SELECT c.doc_id, c.source_type, c.doc_no, c.warehouse_id, COUNT(*) AS line_count, SUM(c.qty) AS total_qty,
+               MAX(c.audit_time) AS audit_time
+        FROM (
+            SELECT h.id AS doc_id, 'SAL_OUT' AS source_type, h.out_no AS doc_no, h.warehouse_id,
+                   d.material_id, d.qty, h.audit_time
+            FROM sal_outstock h
+                     JOIN sal_outstock_detail d ON d.out_id = h.id AND d.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 10
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+            UNION ALL
+            SELECT h.id, 'OTH_OUT', h.no, h.warehouse_id, l.material_id, l.qty, h.audit_time
+            FROM inv_other_out h
+                     JOIN inv_other_out_line l ON l.other_out_id = h.id AND l.deleted = 0
+            WHERE h.deleted = 0 AND h.status = 1
+              AND h.audit_time >= DATE_SUB(NOW(), INTERVAL #{daysBack} DAY)
+        ) c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM wms_task t
+            WHERE t.deleted = 0 AND t.status != 40 AND t.task_type = 'PICK'
+              AND t.source_type = c.source_type AND t.source_id = c.doc_id)
+        <if test="warehouseId != null">
+            AND c.warehouse_id = #{warehouseId}
+        </if>
+        GROUP BY c.doc_id, c.source_type, c.doc_no, c.warehouse_id
+        ORDER BY MAX(c.audit_time) DESC
+        LIMIT 100
+    </select>
+
+    <!-- ==================== 推荐库位 ==================== -->
+
+    <!-- 上架推荐①：同物料在该仓已有库存的库位（优先沿用，避免同料分散；排除不良品库位） -->
+    <select id="selectExistingLocation" resultType="java.util.HashMap">
+        SELECT l.id AS location_id, l.code AS location_code
+        FROM base_location l
+        WHERE l.deleted = 0
+          AND l.status = 1
+          AND l.warehouse_id = #{warehouseId}
+          AND (l.loc_type IS NULL OR l.loc_type != 'DEFECT')
+          AND EXISTS (SELECT 1 FROM inv_stock s
+                      WHERE s.location_id = l.id AND s.material_id = #{materialId}
+                        AND s.deleted = 0 AND s.qty &gt; 0)
+        ORDER BY l.code ASC
+        LIMIT 1
+    </select>
+
+    <!-- 上架推荐②：STORAGE 存储区空容库位（容量=0 不限；占用=库位全部库存行之和） -->
+    <select id="selectFreeStorageLocation" resultType="java.util.HashMap">
+        SELECT l.id AS location_id, l.code AS location_code, l.capacity
+        FROM base_location l
+                 LEFT JOIN base_zone z ON z.id = l.zone_id AND z.deleted = 0
+        LEFT JOIN (SELECT location_id, SUM(qty) AS used_qty FROM inv_stock
+                   WHERE deleted = 0 AND location_id &gt; 0 GROUP BY location_id) occ ON occ.location_id = l.id
+        WHERE l.deleted = 0
+          AND l.status = 1
+          AND l.warehouse_id = #{warehouseId}
+          AND (COALESCE(l.loc_type, 'STORAGE') = 'STORAGE'
+               OR (z.zone_type IS NOT NULL AND z.zone_type = 'STORAGE'))
+          AND (l.capacity = 0 OR COALESCE(occ.used_qty, 0) &lt; l.capacity)
+        ORDER BY (occ.used_qty IS NULL), l.code ASC
+        LIMIT 1
+    </select>
+
+    <!-- 拣选推荐来源：该物料在该仓有余量的库位行（余量最大优先；含批次） -->
+    <select id="selectPickSourceRow" resultType="java.util.HashMap">
+        SELECT s.batch_no, s.location_id, l.code AS location_code, s.qty
+        FROM inv_stock s
+                 LEFT JOIN base_location l ON l.id = s.location_id
+        WHERE s.deleted = 0
+          AND s.location_id &gt; 0
+          AND s.warehouse_id = #{warehouseId}
+          AND s.material_id = #{materialId}
+          AND s.qty &gt; 0
+          AND (l.loc_type IS NULL OR l.loc_type != 'DEFECT')
+        ORDER BY s.qty DESC, l.code ASC
+        LIMIT 1
+    </select>
+
+    <!-- ==================== KPI ==================== -->
+
+    <!-- KPI：窗口内完成任务统计（完成数/平均耗时分钟/当日完成数） -->
+    <select id="selectKpiDone" resultType="java.util.HashMap">
+        SELECT COUNT(*)                                                              AS completed,
+               AVG(TIMESTAMPDIFF(MINUTE, t.create_time, t.finish_time))              AS avg_minutes,
+               SUM(DATE(t.finish_time) = DATE(t.create_time))                        AS on_time
+        FROM wms_task t
+        WHERE t.deleted = 0
+          AND t.status = 30
+          AND t.finish_time &gt;= #{beginTime}
+          AND t.finish_time &lt; #{endTime}
+    </select>
+
+    <!-- KPI：按执行人统计（完成数/平均耗时分钟），只统计有执行人的完成任务 -->
+    <select id="selectKpiByAssignee" resultType="com.erp.inventory.dto.vo.WmsKpiVO$AssigneeKpi">
+        SELECT t.assignee,
+               u.nickname AS assignee_name,
+               COUNT(*)   AS completed,
+               ROUND(AVG(TIMESTAMPDIFF(MINUTE, t.create_time, t.finish_time)), 1) AS avg_duration_minutes
+        FROM wms_task t
+                 LEFT JOIN sys_user u ON u.id = t.assignee AND u.deleted = 0
+        WHERE t.deleted = 0
+          AND t.status = 30
+          AND t.assignee IS NOT NULL
+          AND t.finish_time &gt;= #{beginTime}
+          AND t.finish_time &lt; #{endTime}
+        GROUP BY t.assignee, u.nickname
+        ORDER BY completed DESC
+    </select>
+</mapper>

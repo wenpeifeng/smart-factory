@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 预算方案分页关联查询：带出编制人昵称(sys_user 只读约定表)与控制配置摘要。 -->
+<mapper namespace="com.erp.budget.mapper.BudgetPlanMapper">
+
+    <select id="selectPlanPage" resultType="com.erp.budget.dto.vo.BudgetPlanVO">
+        SELECT t.id,
+               t.plan_code,
+               t.plan_name,
+               t.budget_year,
+               t.status,
+               t.total_amount,
+               cc.control_way,
+               cc.over_percent,
+               t.prepare_by,
+               u.nickname AS prepare_by_name,
+               t.remark,
+               t.create_time
+        FROM budget_plan t
+        LEFT JOIN sys_user u ON u.id = t.prepare_by AND u.deleted = 0
+        LEFT JOIN budget_control_config cc ON cc.plan_id = t.id AND cc.deleted = 0
+        <where>
+            t.deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (t.plan_code LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR t.plan_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.budgetYear != null">AND t.budget_year = #{q.budgetYear}</if>
+            <if test="q.status != null and q.status != ''">AND t.status = #{q.status}</if>
+        </where>
+        ORDER BY t.id DESC
+    </select>
+</mapper>

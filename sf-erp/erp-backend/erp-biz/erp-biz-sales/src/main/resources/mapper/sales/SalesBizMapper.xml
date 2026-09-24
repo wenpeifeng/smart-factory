@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  销售模块自定义 SQL。
+  约定：
+  * 单据查询一律 JOIN base_* 表带出名称（跨模块只读，不 import 对方代码）；
+  * 状态流转全部用条件 UPDATE（WHERE 带旧状态），防并发跳跃流转；
+  * inv_stock / inv_movement / fin_receivable 为跨模块约定表（建表归属
+    V401 库存模块 / V501 财务模块），本文件 SQL 只使用其约定列：
+    biz_type 用 SAL_OUT/SAL_RET，应收 status 用 UNSETTLED（红字以负金额表述）。
+-->
+<mapper namespace="com.erp.sales.mapper.SalesBizMapper">
+
+    <!-- ==================== 销售订单 ==================== -->
+
+    <select id="selectOrderPage" resultType="com.erp.sales.dto.vo.SalOrderVO">
+        SELECT o.id, o.order_no, o.customer_id, o.warehouse_id, o.order_date,
+               o.total_qty, o.total_amount, o.status, o.remark,
+               o.audit_time, o.close_time, o.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name
+        FROM sal_order o
+        LEFT JOIN base_customer c ON c.id = o.customer_id
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id
+        WHERE o.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (o.order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND o.status = #{status}
+        </if>
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="selectOrder" resultType="com.erp.sales.dto.vo.SalOrderVO">
+        SELECT o.id, o.order_no, o.customer_id, o.warehouse_id, o.order_date,
+               o.total_qty, o.total_amount, o.status, o.remark,
+               o.audit_time, o.close_time, o.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name
+        FROM sal_order o
+        LEFT JOIN base_customer c ON c.id = o.customer_id
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id
+        WHERE o.id = #{id} AND o.deleted = 0
+    </select>
+
+    <select id="selectOrderDetails" resultType="com.erp.sales.dto.vo.SalOrderDetailVO">
+        SELECT d.id, d.order_id, d.material_id, d.qty, d.price, d.amount,
+               d.out_qty, d.remark,
+               (d.qty - d.out_qty) AS remaining_qty,
+               m.code AS material_code, m.name AS material_name, m.spec AS material_spec
+        FROM sal_order_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id
+        WHERE d.order_id = #{orderId} AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+
+    <!-- 状态流转用条件 UPDATE（WHERE 携带旧状态），防并发重复审核/跳跃流转；
+         operator 由 Service 层传入（登录上下文接入前为 0=系统）。 -->
+    <update id="auditOrder">
+        UPDATE sal_order
+        SET status = 10, audit_time = NOW(), audit_by = #{operator}, update_time = NOW()
+        WHERE id = #{id} AND status = 0 AND deleted = 0
+    </update>
+
+    <update id="closeOrder">
+        UPDATE sal_order
+        SET status = 90, close_time = NOW(), close_by = #{operator}, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+          AND (status IN (10, 20) OR (status = 0 AND wf_started = 1))
+    </update>
+
+    <!-- 出库数量回写：条件 out_qty + qty <= qty 防并发超发 -->
+    <update id="addOrderOutQty">
+        UPDATE sal_order_detail
+        SET out_qty = out_qty + #{qty}, update_time = NOW()
+        WHERE id = #{orderDetailId} AND deleted = 0
+          AND out_qty + #{qty} &lt;= qty
+    </update>
+
+    <!-- 全部行出库到位 → 已完成（NOT EXISTS 仍有未出完的行） -->
+    <update id="refreshOrderFinished">
+        UPDATE sal_order
+        SET status = 30, update_time = NOW()
+        WHERE id = #{orderId} AND status IN (10, 20) AND deleted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM sal_order_detail d
+              WHERE d.order_id = #{orderId} AND d.deleted = 0 AND d.out_qty &lt; d.qty
+          )
+    </update>
+
+    <!-- 已有出库但未出完 → 部分出库 -->
+    <update id="refreshOrderPartOut">
+        UPDATE sal_order
+        SET status = 20, update_time = NOW()
+        WHERE id = #{orderId} AND status = 10 AND deleted = 0
+          AND EXISTS (
+              SELECT 1 FROM sal_order_detail d
+              WHERE d.order_id = #{orderId} AND d.deleted = 0 AND d.out_qty &gt; 0
+          )
+    </update>
+
+    <!-- ==================== 销售出库单 ==================== -->
+
+    <select id="selectOutstockPage" resultType="com.erp.sales.dto.vo.SalOutstockVO">
+        SELECT o.id, o.out_no, o.order_id, o.order_no, o.customer_id, o.warehouse_id,
+               o.out_date, o.total_qty, o.total_amount, o.status, o.remark,
+               o.audit_time, o.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name
+        FROM sal_outstock o
+        LEFT JOIN base_customer c ON c.id = o.customer_id
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id
+        WHERE o.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (o.out_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR o.order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND o.status = #{status}
+        </if>
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="selectOutstock" resultType="com.erp.sales.dto.vo.SalOutstockVO">
+        SELECT o.id, o.out_no, o.order_id, o.order_no, o.customer_id, o.warehouse_id,
+               o.out_date, o.total_qty, o.total_amount, o.status, o.remark,
+               o.audit_time, o.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name
+        FROM sal_outstock o
+        LEFT JOIN base_customer c ON c.id = o.customer_id
+        LEFT JOIN base_warehouse w ON w.id = o.warehouse_id
+        WHERE o.id = #{id} AND o.deleted = 0
+    </select>
+
+    <select id="selectOutstockDetails" resultType="com.erp.sales.dto.vo.SalOutstockDetailVO">
+        SELECT d.id, d.out_id, d.order_detail_id, d.material_id, d.qty, d.price,
+               d.amount, d.actual_cost, d.returned_qty, d.remark,
+               (d.qty - d.returned_qty) AS returnable_qty,
+               m.code AS material_code, m.name AS material_name, m.spec AS material_spec
+        FROM sal_outstock_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id
+        WHERE d.out_id = #{outId} AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+
+    <update id="auditOutstock">
+        UPDATE sal_outstock
+        SET status = 10, audit_time = NOW(), audit_by = #{operator}, update_time = NOW()
+        WHERE id = #{id} AND status = 0 AND deleted = 0
+    </update>
+
+    <!-- 退货数量回写：条件 returned_qty + qty <= qty 防并发超退 -->
+    <update id="addOutstockReturnedQty">
+        UPDATE sal_outstock_detail
+        SET returned_qty = returned_qty + #{qty}, update_time = NOW()
+        WHERE id = #{outDetailId} AND deleted = 0
+          AND returned_qty + #{qty} &lt;= qty
+    </update>
+
+    <!-- ==================== 销售退货单 ==================== -->
+
+    <select id="selectReturnPage" resultType="com.erp.sales.dto.vo.SalReturnVO">
+        SELECT r.id, r.return_no, r.out_id, r.out_no, r.customer_id, r.warehouse_id,
+               r.return_date, r.total_qty, r.total_amount, r.status, r.remark,
+               r.audit_time, r.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name
+        FROM sal_return r
+        LEFT JOIN base_customer c ON c.id = r.customer_id
+        LEFT JOIN base_warehouse w ON w.id = r.warehouse_id
+        WHERE r.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (r.return_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR r.out_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND r.status = #{status}
+        </if>
+        ORDER BY r.id DESC
+    </select>
+
+    <select id="selectReturn" resultType="com.erp.sales.dto.vo.SalReturnVO">
+        SELECT r.id, r.return_no, r.out_id, r.out_no, r.customer_id, r.warehouse_id,
+               r.return_date, r.total_qty, r.total_amount, r.status, r.remark,
+               r.audit_time, r.create_time,
+               c.code AS customer_code, c.name AS customer_name,
+               w.name AS warehouse_name
+        FROM sal_return r
+        LEFT JOIN base_customer c ON c.id = r.customer_id
+        LEFT JOIN base_warehouse w ON w.id = r.warehouse_id
+        WHERE r.id = #{id} AND r.deleted = 0
+    </select>
+
+    <select id="selectReturnDetails" resultType="com.erp.sales.dto.vo.SalReturnDetailVO">
+        SELECT d.id, d.return_id, d.out_detail_id, d.material_id, d.batch_no, d.qty, d.price,
+               d.amount, d.remark,
+               m.code AS material_code, m.name AS material_name, m.spec AS material_spec
+        FROM sal_return_detail d
+        LEFT JOIN base_material m ON m.id = d.material_id
+        WHERE d.return_id = #{returnId} AND d.deleted = 0
+        ORDER BY d.id
+    </select>
+
+    <update id="auditReturn">
+        UPDATE sal_return
+        SET status = 10, audit_time = NOW(), audit_by = #{operator}, update_time = NOW()
+        WHERE id = #{id} AND status = 0 AND deleted = 0
+    </update>
+
+    <!-- ==================== 跨模块表读写（并行协作约定结构） ==================== -->
+
+    <select id="selectCustomerBrief" resultType="com.erp.sales.dto.vo.CustomerBriefVO">
+        SELECT id, code, name, credit_limit
+        FROM base_customer
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectWarehouseName" resultType="java.lang.String">
+        SELECT name
+        FROM base_warehouse
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="sumUnsettledReceivable" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount - settled_amount), 0)
+        FROM fin_receivable
+        WHERE customer_id = #{customerId}
+    </select>
+
+    <!-- 防超卖/批次扣减已统一切换为 erp-inventory StockService（stockOut FIFO），
+         本文件不再保留 inv_stock / inv_movement 的写 SQL；fin_receivable 仍按约定结构写入 -->
+
+    <insert id="insertReceivable">
+        INSERT INTO fin_receivable (customer_id, biz_no, biz_date, amount, settled_amount, status, remark)
+        VALUES (#{customerId}, #{bizNo}, #{bizDate}, #{amount}, 0, #{status}, #{remark})
+    </insert>
+
+    <!-- ==================== 销售统计 ==================== -->
+
+    <!-- 按日汇总：销售额/成本/毛利。
+         成本口径（V2101 升级）：明细行 actual_cost（审核时 CostService 移动加权实际成本）
+         优先；历史出库行 actual_cost IS NULL 时回退 base_material.ref_cost × 数量估算。 -->
+    <select id="selectDailyStats" resultType="com.erp.sales.dto.vo.SalDailyStatVO">
+        SELECT DATE_FORMAT(o.out_date, '%Y-%m-%d')                                   AS statDate,
+               COALESCE(SUM(d.amount), 0)                                            AS salesAmount,
+               COALESCE(SUM(CASE WHEN d.actual_cost IS NOT NULL
+                                 THEN d.actual_cost
+                                 ELSE d.qty * COALESCE(m.ref_cost, 0) END), 0)       AS costAmount,
+               COALESCE(SUM(d.amount - CASE WHEN d.actual_cost IS NOT NULL
+                                            THEN d.actual_cost
+                                            ELSE d.qty * COALESCE(m.ref_cost, 0) END), 0) AS profitAmount,
+               COALESCE(SUM(d.qty), 0)                                               AS totalQty
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id
+        WHERE o.deleted = 0 AND o.status = 10
+          AND o.out_date BETWEEN #{from} AND #{to}
+        GROUP BY o.out_date
+        ORDER BY o.out_date
+    </select>
+
+    <select id="selectMaterialRank" resultType="com.erp.sales.dto.vo.SalRankVO">
+        SELECT d.material_id AS refId,
+               m.code        AS refCode,
+               m.name        AS refName,
+               COALESCE(SUM(d.amount), 0) AS salesAmount,
+               COALESCE(SUM(d.qty), 0)    AS salesQty
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_material m ON m.id = d.material_id
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null and to != null">
+            AND o.out_date BETWEEN #{from} AND #{to}
+        </if>
+        GROUP BY d.material_id, m.code, m.name
+        ORDER BY salesAmount DESC
+        LIMIT 10
+    </select>
+
+    <select id="selectCustomerRank" resultType="com.erp.sales.dto.vo.SalRankVO">
+        SELECT o.customer_id AS refId,
+               c.code        AS refCode,
+               c.name        AS refName,
+               COALESCE(SUM(d.amount), 0) AS salesAmount,
+               COALESCE(SUM(d.qty), 0)    AS salesQty
+        FROM sal_outstock o
+        JOIN sal_outstock_detail d ON d.out_id = o.id AND d.deleted = 0
+        LEFT JOIN base_customer c ON c.id = o.customer_id
+        WHERE o.deleted = 0 AND o.status = 10
+        <if test="from != null and to != null">
+            AND o.out_date BETWEEN #{from} AND #{to}
+        </if>
+        GROUP BY o.customer_id, c.code, c.name
+        ORDER BY salesAmount DESC
+        LIMIT 10
+    </select>
+
+</mapper>

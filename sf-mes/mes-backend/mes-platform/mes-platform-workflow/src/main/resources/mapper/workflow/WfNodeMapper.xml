@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  流程节点查询（带审批人展示名）。
+  sys_role/sys_user 为 mes-system 标准表，此处只做 LEFT JOIN 投影，不依赖其 Java 代码。
+-->
+<mapper namespace="com.mes.workflow.mapper.WfNodeMapper">
+
+    <select id="selectNodesWithApproverName" resultType="com.mes.workflow.dto.vo.WfNodeVO">
+        SELECT n.id,
+               n.node_order,
+               n.node_name,
+               n.approver_type,
+               n.approver_id,
+               COALESCE(r.name, u.nickname) AS approver_name,
+               n.condition_expr,
+               n.create_time
+        FROM wf_node n
+        LEFT JOIN sys_role r
+               ON n.approver_type = 'APPROVER' AND r.id = n.approver_id AND r.deleted = 0
+        LEFT JOIN sys_user u
+               ON n.approver_type = 'USER' AND u.id = n.approver_id AND u.deleted = 0
+        WHERE n.definition_id = #{definitionId}
+          AND n.deleted = 0
+        ORDER BY n.node_order
+    </select>
+</mapper>

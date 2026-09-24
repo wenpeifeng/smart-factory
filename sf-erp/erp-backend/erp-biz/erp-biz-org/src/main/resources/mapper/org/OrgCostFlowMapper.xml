@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  存货计价流水只读 SQL（cost_flow，cost 模块约定表）。
+  组织间调拨成本单价 = 最新运行余额 balance_cost / balance_qty。
+  注意：表由 V801 建（晚于本模块脚本合入时，首次查询可能报表不存在，
+  Service 层捕获异常降级为单价 0，见 docs/modules/org.md）。
+-->
+<mapper namespace="com.erp.org.mapper.OrgCostFlowMapper">
+
+    <select id="selectLatestBalance" resultType="com.erp.org.dto.raw.CostBalanceRaw">
+        SELECT balance_qty  AS balanceQty,
+               balance_cost AS balanceCost
+        FROM cost_flow
+        WHERE material_id = #{materialId}
+          AND deleted = 0
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+</mapper>

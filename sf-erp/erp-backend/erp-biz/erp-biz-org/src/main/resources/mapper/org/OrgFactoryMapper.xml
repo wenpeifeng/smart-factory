@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  工厂档案 SQL：分页（含仓库数）/ 工厂下仓库清单 / 仓库归属调整 / 工厂库存统计。
+  跨模块约定：base_warehouse（basedata）、inv_stock（inventory）为约定表，
+  只按约定列只读 JOIN 与 factory_id 归属回写，不依赖其唯一键结构。
+-->
+<mapper namespace="com.erp.org.mapper.OrgFactoryMapper">
+
+    <!-- 工厂分页：名称/编码模糊 + 状态，仓库数用相关子查询（工厂量级小，无性能问题） -->
+    <select id="pageFactory" resultType="com.erp.org.dto.vo.FactoryVO">
+        SELECT f.id,
+               f.code,
+               f.name,
+               f.address,
+               f.manager,
+               f.status,
+               f.remark,
+               f.create_time,
+               (SELECT COUNT(*)
+                  FROM base_warehouse w
+                 WHERE w.factory_id = f.id
+                   AND w.deleted = 0) AS warehouseCount
+        FROM org_factory f
+        WHERE f.deleted = 0
+        <if test="q.name != null and q.name != ''">
+            AND (f.name LIKE CONCAT('%', #{q.name}, '%') OR f.code LIKE CONCAT('%', #{q.name}, '%'))
+        </if>
+        <if test="q.status != null">
+            AND f.status = #{q.status}
+        </if>
+        ORDER BY f.id DESC
+    </select>
+
+    <!-- 工厂下仓库清单（含工厂名回显，只读） -->
+    <select id="selectFactoryWarehouses" resultType="com.erp.org.dto.vo.WarehouseBelongVO">
+        SELECT w.id,
+               w.code,
+               w.name,
+               w.manager,
+               w.factory_id     AS factoryId,
+               f.name           AS factoryName,
+               w.status
+        FROM base_warehouse w
+        LEFT JOIN org_factory f ON f.id = w.factory_id AND f.deleted = 0
+        WHERE w.deleted = 0
+          AND w.factory_id = #{factoryId}
+        ORDER BY w.id
+    </select>
+
+    <!-- 仓库归属信息点查（调拨单保存前校验仓库归属/状态用） -->
+    <select id="selectWarehouse" resultType="com.erp.org.dto.raw.WarehouseRaw">
+        SELECT id, code, name, factory_id AS factoryId, status
+        FROM base_warehouse
+        WHERE id = #{warehouseId}
+          AND deleted = 0
+    </select>
+
+    <!-- 仓库归属调整：只回写 factory_id 一列 -->
+    <update id="updateWarehouseFactory">
+        UPDATE base_warehouse
+        SET factory_id = #{factoryId}
+        WHERE id = #{warehouseId}
+          AND deleted = 0
+    </update>
+
+    <!-- 工厂下仓库数（删除工厂前校验） -->
+    <select id="countFactoryWarehouses" resultType="long">
+        SELECT COUNT(*)
+        FROM base_warehouse
+        WHERE factory_id = #{factoryId}
+          AND deleted = 0
+    </select>
+
+    <!-- 工厂库存统计：各仓库库存量汇总（LEFT JOIN 保留零库存/空仓库） -->
+    <select id="statisticsStock" resultType="com.erp.org.dto.vo.FactoryStockVO">
+        SELECT w.id              AS warehouseId,
+               w.code            AS warehouseCode,
+               w.name            AS warehouseName,
+               COUNT(s.id)       AS materialCount,
+               COALESCE(SUM(s.qty), 0) AS totalQty
+        FROM base_warehouse w
+        LEFT JOIN inv_stock s
+               ON s.warehouse_id = w.id
+              AND s.deleted = 0
+        WHERE w.deleted = 0
+          AND w.factory_id = #{factoryId}
+        GROUP BY w.id, w.code, w.name
+        ORDER BY w.id
+    </select>
+</mapper>

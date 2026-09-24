@@ -1,0 +1,12 @@
+package com.mes.plan.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.mes.plan.entity.PlanKitCheck;
+import org.apache.ibatis.annotations.Mapper;
+
+/**
+ * PlanKitCheck Mapper（简单条件走 MP，无 XML）。
+ */
+@Mapper
+public interface PlanKitCheckMapper extends BaseMapper<PlanKitCheck> {
+}

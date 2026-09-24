@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  用户-组织绑定 Mapper XML：绑定维护为整体覆盖语义，物理删除旧绑定，
+  避免逻辑删除在 uk(user_id, org_id) 上撞键累积垃圾行。
+-->
+<mapper namespace="com.mes.system.mapper.SysUserOrgMapper">
+
+    <delete id="deletePhysicallyByUserId">
+        DELETE FROM `sys_user_org` WHERE `user_id` = #{userId}
+    </delete>
+</mapper>

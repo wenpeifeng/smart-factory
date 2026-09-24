@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  应付核销条件 UPDATE：与应收核销（FinReceivableMapper.xml）完全对称。
+-->
+<mapper namespace="com.erp.finance.mapper.FinPayableMapper">
+
+    <update id="applyVerify">
+        UPDATE fin_payable
+        SET settled_amount = settled_amount + #{amount},
+            status         = IF(settled_amount + #{amount} >= amount, 'SETTLED', 'PARTIAL')
+        WHERE id = #{id}
+          AND book_id = #{bookId}
+          AND deleted = 0
+          AND amount - settled_amount &gt;= #{amount}
+    </update>
+</mapper>

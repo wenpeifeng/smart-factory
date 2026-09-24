@@ -1,0 +1,50 @@
+# MES 项目数据库环境（MySQL 8 + Redis 7）
+# 说明：数据通过 docker volume 持久化，容器删除后数据仍在。
+# 注意：日常启动请用 ./script/sh/start-all.sh（内部由 env-init.sh 管理容器，
+#       运行中/已停止/不存在三种状态自动处理）；本文件仅作全新环境的兜底创建，
+#       若同名容器已存在，docker compose up 会冲突报错。
+
+services:
+  mysql:
+    image: mysql:8
+    container_name: mes-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: mes123456
+      MYSQL_DATABASE: mes_db
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - mes-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-pmes123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mes-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass mes123456
+    ports:
+      - "6380:6379"
+    volumes:
+      - mes-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "mes123456", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mes-mysql-data:
+    name: mes-mysql-data   # 复用 docker run 创建的同名卷，保证数据一致
+    external: false
+  mes-redis-data:
+    name: mes-redis-data
+    external: false

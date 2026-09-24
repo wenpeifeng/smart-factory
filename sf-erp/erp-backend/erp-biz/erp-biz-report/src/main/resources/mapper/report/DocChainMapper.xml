@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.erp.report.mapper.DocChainMapper">
+
+    <!-- 单据联查邻接查询（只读）。列别名统一：doc_id/doc_no/biz_date/amount/status；
+         status 一律 CAST 成 CHAR 统一口径（int/tinyint/varchar 混用）；
+         全部过滤 deleted=0（各表均有逻辑删除列）。 -->
+
+    <!-- ==================== 锚点单据 ==================== -->
+
+    <select id="selectQuotation" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, quotation_no doc_no, quote_date biz_date, NULL amount,
+               CAST(status AS CHAR) status
+        FROM sal_quotation WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectSalOrder" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, order_no doc_no, order_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM sal_order WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectOutstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, out_no doc_no, out_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM sal_outstock WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectSalReturn" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, return_no doc_no, return_date biz_date,
+               -total_amount amount, CAST(status AS CHAR) status
+        FROM sal_return WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectPurOrder" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, order_no doc_no, order_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM pur_order WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectInstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, instock_no doc_no, instock_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM pur_instock WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectPurReturn" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, return_no doc_no, return_date biz_date,
+               -total_amount amount, CAST(status AS CHAR) status
+        FROM pur_return WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectSalesInvoice" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, invoice_no doc_no, invoice_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM inv_sales_invoice WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectPurchaseInvoice" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, invoice_no doc_no, invoice_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM inv_purchase_invoice WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectReceivable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, biz_no doc_no, biz_date, amount,
+               status
+        FROM fin_receivable WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectPayable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, biz_no doc_no, biz_date, amount,
+               status
+        FROM fin_payable WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectReceipt" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, receipt_no doc_no, biz_date, amount,
+               'AUDITED' status
+        FROM fin_receipt WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectPayment" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, payment_no doc_no, biz_date, amount,
+               'AUDITED' status
+        FROM fin_payment WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectVoucher" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, voucher_no doc_no, voucher_date biz_date, total_debit amount,
+               status
+        FROM fin_voucher WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <!-- ==================== 上游 ==================== -->
+
+    <select id="upQuotationsFromOrder" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT q.id doc_id, q.quotation_no doc_no, q.quote_date biz_date, NULL amount,
+               CAST(q.status AS CHAR) status
+        FROM sal_quotation q
+        WHERE q.order_id = #{orderId} AND q.deleted = 0
+    </select>
+
+    <select id="upOrderFromOutstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT o.id doc_id, o.order_no doc_no, o.order_date biz_date, o.total_amount amount,
+               CAST(o.status AS CHAR) status
+        FROM sal_order o
+        JOIN sal_outstock s ON o.id = s.order_id
+        WHERE s.id = #{outstockId} AND o.deleted = 0 AND s.deleted = 0
+    </select>
+
+    <select id="upOutstockFromSalReturn" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT s.id doc_id, s.out_no doc_no, s.out_date biz_date, s.total_amount amount,
+               CAST(s.status AS CHAR) status
+        FROM sal_outstock s
+        JOIN sal_return r ON s.id = r.out_id
+        WHERE r.id = #{returnId} AND s.deleted = 0 AND r.deleted = 0
+    </select>
+
+    <select id="upOrderFromInstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT o.id doc_id, o.order_no doc_no, o.order_date biz_date, o.total_amount amount,
+               CAST(o.status AS CHAR) status
+        FROM pur_order o
+        JOIN pur_instock s ON o.id = s.order_id
+        WHERE s.id = #{instockId} AND o.deleted = 0 AND s.deleted = 0
+    </select>
+
+    <select id="upInstockFromPurReturn" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT s.id doc_id, s.instock_no doc_no, s.instock_date biz_date, s.total_amount amount,
+               CAST(s.status AS CHAR) status
+        FROM pur_instock s
+        JOIN pur_return r ON s.id = r.instock_id
+        WHERE r.id = #{returnId} AND s.deleted = 0 AND r.deleted = 0
+    </select>
+
+    <select id="upOutstockFromSalesInvoice" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT s.id doc_id, s.out_no doc_no, s.out_date biz_date, s.total_amount amount,
+               CAST(s.status AS CHAR) status
+        FROM sal_outstock s
+        JOIN inv_sales_invoice i ON i.biz_type = 'SAL_OUTSTOCK' AND i.biz_id = s.id
+        WHERE i.id = #{invoiceId} AND s.deleted = 0 AND i.deleted = 0
+    </select>
+
+    <select id="upInstockFromPurchaseInvoice" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT s.id doc_id, s.instock_no doc_no, s.instock_date biz_date, s.total_amount amount,
+               CAST(s.status AS CHAR) status
+        FROM pur_instock s
+        JOIN inv_purchase_invoice i ON i.biz_type = 'PUR_INSTOCK' AND i.biz_id = s.id
+        WHERE i.id = #{invoiceId} AND s.deleted = 0 AND i.deleted = 0
+    </select>
+
+    <select id="upOutstockFromReceivable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT s.id doc_id, s.out_no doc_no, s.out_date biz_date, s.total_amount amount,
+               CAST(s.status AS CHAR) status
+        FROM sal_outstock s
+        JOIN fin_receivable ar ON ar.biz_no = s.out_no
+        WHERE ar.id = #{receivableId} AND s.deleted = 0 AND ar.deleted = 0
+    </select>
+
+    <select id="upSalReturnFromReceivable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT r.id doc_id, r.return_no doc_no, r.return_date biz_date,
+               -r.total_amount amount, CAST(r.status AS CHAR) status
+        FROM sal_return r
+        JOIN fin_receivable ar ON ar.biz_no = r.return_no
+        WHERE ar.id = #{receivableId} AND r.deleted = 0 AND ar.deleted = 0
+    </select>
+
+    <select id="upInstockFromPayable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT s.id doc_id, s.instock_no doc_no, s.instock_date biz_date, s.total_amount amount,
+               CAST(s.status AS CHAR) status
+        FROM pur_instock s
+        JOIN fin_payable ap ON ap.biz_no = s.instock_no
+        WHERE ap.id = #{payableId} AND s.deleted = 0 AND ap.deleted = 0
+    </select>
+
+    <select id="upPayablesFromPayment" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT DISTINCT ap.id doc_id, ap.biz_no doc_no, ap.biz_date, ap.amount, ap.status
+        FROM fin_payable ap
+        JOIN fin_payment_item it ON it.payable_id = ap.id
+        WHERE it.payment_id = #{paymentId} AND ap.deleted = 0 AND it.deleted = 0
+    </select>
+
+    <select id="upReceivablesFromReceipt" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT DISTINCT ar.id doc_id, ar.biz_no doc_no, ar.biz_date, ar.amount, ar.status
+        FROM fin_receivable ar
+        JOIN fin_receipt_item it ON it.receivable_id = ar.id
+        WHERE it.receipt_id = #{receiptId} AND ar.deleted = 0 AND it.deleted = 0
+    </select>
+
+    <!-- 凭证 → 来源业务单据（source_type 各表 UNION；source_type 值见 V521 凭证引擎约定） -->
+    <select id="upSourcesFromVoucher" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT t.* FROM (
+            SELECT 'RECEIPT' doc_type, r.id doc_id, r.receipt_no doc_no, r.biz_date,
+                   r.amount, 'AUDITED' status
+            FROM fin_voucher v JOIN fin_receipt r
+                 ON v.source_type = 'RECEIPT' AND r.id = v.source_id
+            WHERE v.id = #{voucherId} AND r.deleted = 0
+            UNION ALL
+            SELECT 'PAYMENT', p.id, p.payment_no, p.biz_date, p.amount, 'AUDITED'
+            FROM fin_voucher v JOIN fin_payment p
+                 ON v.source_type = 'PAYMENT' AND p.id = v.source_id
+            WHERE v.id = #{voucherId} AND p.deleted = 0
+            UNION ALL
+            SELECT 'PUR_INSTOCK', s.id, s.instock_no, s.instock_date, s.total_amount,
+                   CAST(s.status AS CHAR)
+            FROM fin_voucher v JOIN pur_instock s
+                 ON v.source_type = 'PUR_INSTOCK' AND s.id = v.source_id
+            WHERE v.id = #{voucherId} AND s.deleted = 0
+            UNION ALL
+            SELECT 'SAL_OUTSTOCK', s.id, s.out_no, s.out_date, s.total_amount,
+                   CAST(s.status AS CHAR)
+            FROM fin_voucher v JOIN sal_outstock s
+                 ON v.source_type = 'SAL_OUTSTOCK' AND s.id = v.source_id
+            WHERE v.id = #{voucherId} AND s.deleted = 0
+            UNION ALL
+            SELECT 'PUR_RETURN', r.id, r.return_no, r.return_date, -r.total_amount,
+                   CAST(r.status AS CHAR)
+            FROM fin_voucher v JOIN pur_return r
+                 ON v.source_type = 'PUR_RET' AND r.id = v.source_id
+            WHERE v.id = #{voucherId} AND r.deleted = 0
+            UNION ALL
+            SELECT 'SAL_RETURN', r.id, r.return_no, r.return_date, -r.total_amount,
+                   CAST(r.status AS CHAR)
+            FROM fin_voucher v JOIN sal_return r
+                 ON v.source_type = 'SAL_RET' AND r.id = v.source_id
+            WHERE v.id = #{voucherId} AND r.deleted = 0
+            UNION ALL
+            SELECT 'SALES_INVOICE', i.id, i.invoice_no, i.invoice_date, i.total_amount,
+                   CAST(i.status AS CHAR)
+            FROM fin_voucher v JOIN inv_sales_invoice i
+                 ON v.source_type = 'INVOICE_SALES' AND i.id = v.source_id
+            WHERE v.id = #{voucherId} AND i.deleted = 0
+            UNION ALL
+            SELECT 'PURCHASE_INVOICE', i.id, i.invoice_no, i.invoice_date, i.total_amount,
+                   CAST(i.status AS CHAR)
+            FROM fin_voucher v JOIN inv_purchase_invoice i
+                 ON v.source_type = 'INVOICE_PURCHASE' AND i.id = v.source_id
+            WHERE v.id = #{voucherId} AND i.deleted = 0
+        ) t
+    </select>
+
+    <!-- ==================== 下游 ==================== -->
+
+    <select id="downOrderFromQuotation" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT o.id doc_id, o.order_no doc_no, o.order_date biz_date, o.total_amount amount,
+               CAST(o.status AS CHAR) status
+        FROM sal_quotation q
+        JOIN sal_order o ON o.id = q.order_id
+        WHERE q.id = #{quotationId} AND q.deleted = 0 AND o.deleted = 0
+    </select>
+
+    <select id="downOutstocksFromOrder" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, out_no doc_no, out_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM sal_outstock
+        WHERE order_id = #{orderId} AND deleted = 0
+    </select>
+
+    <select id="downSalReturnsFromOutstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, return_no doc_no, return_date biz_date,
+               -total_amount amount, CAST(status AS CHAR) status
+        FROM sal_return
+        WHERE out_id = #{outstockId} AND deleted = 0
+    </select>
+
+    <select id="downSalesInvoicesFromOutstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, invoice_no doc_no, invoice_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM inv_sales_invoice
+        WHERE biz_type = 'SAL_OUTSTOCK' AND biz_id = #{outstockId} AND deleted = 0
+    </select>
+
+    <select id="downReceivablesFromOutstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT ar.id doc_id, ar.biz_no doc_no, ar.biz_date, ar.amount, ar.status
+        FROM fin_receivable ar
+        JOIN sal_outstock s ON ar.biz_no = s.out_no
+        WHERE s.id = #{outstockId} AND ar.deleted = 0 AND s.deleted = 0
+    </select>
+
+    <select id="downReceivablesFromSalReturn" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT ar.id doc_id, ar.biz_no doc_no, ar.biz_date, ar.amount, ar.status
+        FROM fin_receivable ar
+        JOIN sal_return r ON ar.biz_no = r.return_no
+        WHERE r.id = #{returnId} AND ar.deleted = 0 AND r.deleted = 0
+    </select>
+
+    <select id="downInstocksFromOrder" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, instock_no doc_no, instock_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM pur_instock
+        WHERE order_id = #{orderId} AND deleted = 0
+    </select>
+
+    <select id="downPurReturnsFromInstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, return_no doc_no, return_date biz_date,
+               -total_amount amount, CAST(status AS CHAR) status
+        FROM pur_return
+        WHERE instock_id = #{instockId} AND deleted = 0
+    </select>
+
+    <select id="downPurchaseInvoicesFromInstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, invoice_no doc_no, invoice_date biz_date, total_amount amount,
+               CAST(status AS CHAR) status
+        FROM inv_purchase_invoice
+        WHERE biz_type = 'PUR_INSTOCK' AND biz_id = #{instockId} AND deleted = 0
+    </select>
+
+    <select id="downPayablesFromInstock" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT ap.id doc_id, ap.biz_no doc_no, ap.biz_date, ap.amount, ap.status
+        FROM fin_payable ap
+        JOIN pur_instock s ON ap.biz_no = s.instock_no
+        WHERE s.id = #{instockId} AND ap.deleted = 0 AND s.deleted = 0
+    </select>
+
+    <select id="downReceiptsFromReceivable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT DISTINCT r.id doc_id, r.receipt_no doc_no, r.biz_date, r.amount, 'AUDITED' status
+        FROM fin_receipt r
+        JOIN fin_receipt_item it ON it.receipt_id = r.id
+        WHERE it.receivable_id = #{receivableId} AND r.deleted = 0 AND it.deleted = 0
+    </select>
+
+    <select id="downPaymentsFromPayable" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT DISTINCT p.id doc_id, p.payment_no doc_no, p.biz_date, p.amount, 'AUDITED' status
+        FROM fin_payment p
+        JOIN fin_payment_item it ON it.payment_id = p.id
+        WHERE it.payable_id = #{payableId} AND p.deleted = 0 AND it.deleted = 0
+    </select>
+
+    <select id="downVouchersFromSource" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, voucher_no doc_no, voucher_date biz_date, total_debit amount, status
+        FROM fin_voucher
+        WHERE source_type = #{sourceType} AND source_id = #{sourceId} AND deleted = 0
+    </select>
+
+    <!-- ==================== 红冲配对（biz_reverse_log） ==================== -->
+
+    <select id="downRedDocFrom" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, reverse_no doc_no, reverse_time biz_date, NULL amount, 'REVERSED' status
+        FROM biz_reverse_log
+        WHERE source_type = #{sourceType} AND source_id = #{sourceId} AND deleted = 0
+    </select>
+
+    <select id="upSourceDocFromRed" resultType="com.erp.report.dto.vo.DocChainNodeVO">
+        SELECT id doc_id, source_no doc_no, reverse_time biz_date, NULL amount, NULL status
+        FROM biz_reverse_log
+        WHERE reverse_type = #{reverseType} AND reverse_id = #{reverseId} AND deleted = 0
+    </select>
+
+</mapper>

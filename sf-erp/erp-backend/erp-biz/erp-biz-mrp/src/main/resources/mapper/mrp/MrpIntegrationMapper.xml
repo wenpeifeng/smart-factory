@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  跨模块集成网关 SQL —— 只访问并行模块的实际表结构（已对齐 script/sql/migration 下各模块脚本）：
+  base_material(id, code, name, spec, unit_id -> base_unit.name)   status:1启用
+  base_warehouse(id, name) / base_supplier(id, name)
+  inv_stock(warehouse_id, material_id, batch_no, qty)   仅只读汇总（MRP 运算"全仓合计"）
+  pur_order.status TINYINT(0草稿/10已审核/20部分入库/30已完成/90已关闭)
+  fin_payable(supplier_id, biz_no, amount, status['UNSETTLED'], remark)
+  约定变更需同步 docs/modules/mrp.md 的集成契约章节。
+  V2101 起：inv_stock / inv_movement 的写入统一切换为 erp-inventory StockService，
+  本文件不再保留对库存表的任何写 SQL。
+-->
+<mapper namespace="com.erp.mrp.mapper.MrpIntegrationMapper">
+
+    <select id="selectMaterials" resultType="com.erp.mrp.dto.vo.MaterialBriefVO">
+        SELECT m.id, m.code, m.name, m.spec, u.name AS unit
+        FROM base_material m
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        WHERE m.deleted = 0 AND m.status = 1 AND m.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <select id="pageMaterials" resultType="com.erp.mrp.dto.vo.MaterialBriefVO">
+        SELECT m.id, m.code, m.name, m.spec, u.name AS unit
+        FROM base_material m
+        LEFT JOIN base_unit u ON u.id = m.unit_id AND u.deleted = 0
+        WHERE m.deleted = 0 AND m.status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY m.id DESC
+    </select>
+
+    <select id="selectMaterialIds" resultType="long">
+        SELECT id
+        FROM base_material
+        WHERE deleted = 0 AND status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (code LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY id DESC
+        LIMIT 200
+    </select>
+
+    <select id="selectWarehouses" resultType="com.erp.mrp.dto.vo.WarehouseBriefVO">
+        SELECT id, name
+        FROM base_warehouse
+        WHERE deleted = 0
+        ORDER BY id
+        LIMIT 100
+    </select>
+
+    <select id="selectSuppliers" resultType="com.erp.mrp.dto.vo.SupplierBriefVO">
+        SELECT id, name
+        FROM base_supplier
+        WHERE deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY id
+        LIMIT 100
+    </select>
+
+    <!-- MRP 现有库存口径：全仓合计（批次行+汇总行一并 SUM，与批次管理兼容） -->
+    <select id="sumStockByMaterial" resultType="com.erp.mrp.dto.vo.MaterialQtyVO">
+        SELECT material_id AS materialId, IFNULL(SUM(qty), 0) AS qty
+        FROM inv_stock
+        WHERE deleted = 0 AND material_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY material_id
+    </select>
+
+    <!-- 采购在途：已审核(10)/部分入库(20)且未入库完的采购明细数量 -->
+    <select id="sumOnwayByMaterial" resultType="com.erp.mrp.dto.vo.MaterialQtyVO">
+        SELECT d.material_id AS materialId,
+               IFNULL(SUM(d.qty - IFNULL(d.received_qty, 0)), 0) AS qty
+        FROM pur_order o
+        JOIN pur_order_detail d ON d.order_id = o.id
+        WHERE o.deleted = 0
+          AND d.deleted = 0
+          AND o.status IN (10, 20)
+          AND d.qty > IFNULL(d.received_qty, 0)
+          AND d.material_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY d.material_id
+    </select>
+
+    <!-- 委外应付：fin_payable 实际列为 supplier_id/biz_no/amount/status/remark -->
+    <insert id="insertPayable">
+        INSERT INTO fin_payable (supplier_id, biz_no, amount, status, remark,
+                                 create_by, create_time, update_by, update_time, deleted)
+        VALUES (#{supplierId}, #{bizNo}, #{amount}, 'UNSETTLED', #{remark},
+                0, NOW(), 0, NOW(), 0)
+    </insert>
+
+    <select id="tableExists" resultType="int">
+        SELECT COUNT(*)
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = #{tableName}
+    </select>
+
+</mapper>

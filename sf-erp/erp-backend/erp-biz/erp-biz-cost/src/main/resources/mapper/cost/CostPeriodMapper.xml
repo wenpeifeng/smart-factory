@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 存货核算期间：结账事务行锁 -->
+<mapper namespace="com.erp.cost.mapper.CostPeriodMapper">
+
+    <!-- 按期间取行并加锁（结账事务串行化） -->
+    <select id="selectByPeriodForUpdate" resultType="com.erp.cost.entity.CostPeriod">
+        SELECT id, period, status, out_amount, voucher_id, voucher_no,
+               settle_by, settle_time, remark
+        FROM cost_period
+        WHERE period = #{period} AND deleted = 0
+        FOR UPDATE
+    </select>
+</mapper>

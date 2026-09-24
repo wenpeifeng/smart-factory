@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 采购暂估应付单关联查询（分页）与暂估报表（供应商维度汇总）。 -->
+<mapper namespace="com.erp.purchase.mapper.PurEstimationMapper">
+
+    <select id="selectEstimationPage" resultType="com.erp.purchase.dto.vo.PurEstimationVO">
+        SELECT e.id,
+               e.estimation_no,
+               e.instock_id,
+               e.instock_no,
+               e.supplier_id,
+               s.name AS supplier_name,
+               e.amount,
+               e.reversed_amount,
+               (e.amount - e.reversed_amount) AS open_amount,
+               e.status,
+               e.period,
+               e.invoice_no,
+               e.remark,
+               e.create_time
+        FROM pur_estimation e
+        LEFT JOIN base_supplier s ON s.id = e.supplier_id AND s.deleted = 0
+        <where>
+            e.deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (e.estimation_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR e.instock_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR e.invoice_no LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.supplierId != null">AND e.supplier_id = #{q.supplierId}</if>
+            <if test="q.status != null">AND e.status = #{q.status}</if>
+            <if test="q.period != null and q.period != ''">AND e.period = #{q.period}</if>
+        </where>
+        ORDER BY e.id DESC
+    </select>
+
+    <select id="summaryBySupplier"
+            resultType="com.erp.purchase.dto.vo.PurEstimationSummaryVO$SupplierRow">
+        SELECT e.supplier_id,
+               s.name AS supplier_name,
+               COUNT(*)        AS estimation_count,
+               SUM(e.amount)   AS total_amount,
+               SUM(e.reversed_amount) AS reversed_amount,
+               SUM(e.amount - e.reversed_amount) AS open_amount
+        FROM pur_estimation e
+        LEFT JOIN base_supplier s ON s.id = e.supplier_id AND s.deleted = 0
+        WHERE e.deleted = 0 AND e.period = #{period}
+        GROUP BY e.supplier_id, s.name
+        ORDER BY open_amount DESC, e.supplier_id
+    </select>
+</mapper>

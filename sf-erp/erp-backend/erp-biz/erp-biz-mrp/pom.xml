@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      erp-biz-mrp：生产制造(BOM/MPS/MRP运算/生产订单/车间工序/委外)
+      分层约定: entity / mapper / service / service.impl / controller / dto
+    -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>erp-biz-mrp</artifactId>
+    <name>erp-biz-mrp</name>
+    <description>生产制造(BOM/MPS/MRP运算/生产订单/车间工序/委外)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-framework</artifactId>
+        </dependency>
+        <!-- @OperLog 操作日志注解（切面在 erp-platform-system，bootstrap 统一装配） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-system</artifactId>
+        </dependency>
+        <!-- 依赖基础资料模块(物料/仓库等公共主数据) -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-basedata</artifactId>
+        </dependency>
+        <!-- 跨模块业务接线(依赖方向单向: mrp -> {inventory,cost,qc,workflow})：
+             领料/完工/委外走 StockService(批次感知)、成本实时归集走 CostService、
+             完工入库前 QC 卡点、订单下达接审批流 WorkflowService -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-inventory</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-cost</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-qc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-platform-workflow</artifactId>
+        </dependency>
+        <!-- 跨模块业务接线(依赖方向单向: mrp -> purchase，purchase 不依赖 mrp，无循环)：
+             PURCHASE 建议转采购订单草稿（单条/批量同供应商合并），调
+             PurOrderService.create（供应商可空=草稿待补填，采购侧审核前强校验） -->
+        <dependency>
+            <groupId>com.erp</groupId>
+            <artifactId>erp-biz-purchase</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

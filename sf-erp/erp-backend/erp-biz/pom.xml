@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      业务域层分组聚合壳：仅做目录级分组（packaging=pom，无代码无依赖）。
+      子模块的 parent 仍直接继承根 POM（聚合≠继承）——依赖管理单一来源。
+    -->
+    <parent>
+        <groupId>com.erp</groupId>
+        <artifactId>erp-backend</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>erp-biz</artifactId>
+    <packaging>pom</packaging>
+    <name>erp-biz</name>
+    <description>业务域层分组聚合</description>
+
+    <modules>
+        <module>erp-biz-asset</module>
+        <module>erp-biz-basedata</module>
+        <module>erp-biz-budget</module>
+        <module>erp-biz-cost</module>
+        <module>erp-biz-equipment</module>
+        <module>erp-biz-finance</module>
+        <module>erp-biz-hr</module>
+        <module>erp-biz-inventory</module>
+        <module>erp-biz-invoice</module>
+        <module>erp-biz-integration</module>
+        <module>erp-biz-mrp</module>
+        <module>erp-biz-org</module>
+        <module>erp-biz-purchase</module>
+        <module>erp-biz-qc</module>
+        <module>erp-biz-report</module>
+        <module>erp-biz-sales</module>
+    </modules>
+</project>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  财务复杂查询：
+  1) 客商名称 —— 直接读 base_customer / base_supplier 表（跨模块只读，不 import 对方代码）。
+     basedata 模块（V10x）尚未建表时，Service 层捕获 SQL 异常降级为"名称为空"。
+  2) 科目汇总 / 试算平衡 —— 只统计已过账（status = 'POSTED'）凭证的分录，
+     期初 = from 之前累计，本期 = [from, to] 区间；LEFT JOIN 保证无发生额科目也出行。
+-->
+<mapper namespace="com.erp.finance.mapper.FinQueryMapper">
+
+    <select id="selectCustomerRows" resultType="java.util.HashMap">
+        SELECT id, name
+        FROM base_customer
+        WHERE deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectSupplierRows" resultType="java.util.HashMap">
+        SELECT id, name
+        FROM base_supplier
+        WHERE deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectSubjectAggregate" resultType="com.erp.finance.dto.vo.SubjectAggregateRawVO">
+        SELECT
+            COALESCE(SUM(CASE WHEN v.voucher_date &lt; #{from} THEN e.debit_amount ELSE 0 END), 0) AS openingDebitSum,
+            COALESCE(SUM(CASE WHEN v.voucher_date &lt; #{from} THEN e.credit_amount ELSE 0 END), 0) AS openingCreditSum,
+            COALESCE(SUM(CASE WHEN v.voucher_date &gt;= #{from} AND v.voucher_date &lt;= #{to} THEN e.debit_amount ELSE 0 END), 0)  AS periodDebitSum,
+            COALESCE(SUM(CASE WHEN v.voucher_date &gt;= #{from} AND v.voucher_date &lt;= #{to} THEN e.credit_amount ELSE 0 END), 0) AS periodCreditSum
+        FROM fin_voucher_entry e
+                 INNER JOIN fin_voucher v ON v.id = e.voucher_id
+            AND v.deleted = 0
+            AND v.status = 'POSTED'
+            AND v.book_id = #{bookId}
+            AND v.voucher_date &lt;= #{to}
+        WHERE e.deleted = 0
+        <if test="subjectId != null">
+            AND e.subject_id = #{subjectId}
+        </if>
+    </select>
+
+    <select id="selectTrialBalanceRows" resultType="com.erp.finance.dto.vo.TrialBalanceRawVO">
+        SELECT
+            s.id       AS subjectId,
+            s.code,
+            s.name,
+            s.category,
+            s.direction,
+            COALESCE(SUM(CASE WHEN v.voucher_date &lt; #{from} THEN e.debit_amount ELSE 0 END), 0)  AS openingDebitSum,
+            COALESCE(SUM(CASE WHEN v.voucher_date &lt; #{from} THEN e.credit_amount ELSE 0 END), 0) AS openingCreditSum,
+            COALESCE(SUM(CASE WHEN v.voucher_date &gt;= #{from} AND v.voucher_date &lt;= #{to} THEN e.debit_amount ELSE 0 END), 0)  AS periodDebitSum,
+            COALESCE(SUM(CASE WHEN v.voucher_date &gt;= #{from} AND v.voucher_date &lt;= #{to} THEN e.credit_amount ELSE 0 END), 0) AS periodCreditSum
+        FROM fin_subject s
+                 LEFT JOIN fin_voucher_entry e ON e.subject_id = s.id AND e.deleted = 0
+                 LEFT JOIN fin_voucher v ON v.id = e.voucher_id
+            AND v.deleted = 0
+            AND v.status = 'POSTED'
+            AND v.book_id = #{bookId}
+            AND v.voucher_date &lt;= #{to}
+        WHERE s.deleted = 0
+          AND s.book_id = #{bookId}
+        GROUP BY s.id, s.code, s.name, s.category, s.direction
+        ORDER BY s.code
+    </select>
+
+    <!-- 账龄分析：未结清应收/应付原始行（分桶在 Java 层，锚点=COALESCE(biz_date,DATE(create_time))） -->
+    <select id="selectUnsettledReceivableRows" resultType="com.erp.finance.dto.vo.AgingRawVO">
+        SELECT id,
+               customer_id  AS partnerId,
+               biz_no       AS bizNo,
+               biz_date     AS bizDate,
+               due_date     AS dueDate,
+               create_time  AS createTime,
+               amount,
+               settled_amount AS settledAmount
+        FROM fin_receivable
+        WHERE deleted = 0
+          AND book_id = #{bookId}
+          AND amount - settled_amount &gt; 0.005
+        ORDER BY COALESCE(biz_date, DATE(create_time)), id
+    </select>
+
+    <select id="selectUnsettledPayableRows" resultType="com.erp.finance.dto.vo.AgingRawVO">
+        SELECT id,
+               supplier_id  AS partnerId,
+               biz_no       AS bizNo,
+               biz_date     AS bizDate,
+               due_date     AS dueDate,
+               create_time  AS createTime,
+               amount,
+               settled_amount AS settledAmount
+        FROM fin_payable
+        WHERE deleted = 0
+          AND book_id = #{bookId}
+          AND amount - settled_amount &gt; 0.005
+        ORDER BY COALESCE(biz_date, DATE(create_time)), id
+    </select>
+</mapper>

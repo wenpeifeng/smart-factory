@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  请购单分页关联查询。
+  说明：
+  - sys_dept / sys_user 为 system 模块标准表，此处只做 LEFT JOIN 投影，不依赖其 Java 代码；
+  - 自定义 SQL 不走 MP 逻辑删除插件，deleted=0 条件必须显式写出；
+  - 物料筛选用 EXISTS 子查询（按明细包含的物料过滤主单）。
+-->
+<mapper namespace="com.erp.purchase.mapper.PurRequisitionMapper">
+
+    <select id="selectReqPage" resultType="com.erp.purchase.dto.vo.PurRequisitionVO">
+        SELECT r.id,
+               r.req_no,
+               r.dept_id,
+               d.name AS dept_name,
+               r.applicant_id,
+               u.nickname AS applicant_name,
+               r.expect_date,
+               r.status,
+               r.remark,
+               r.create_time
+        FROM pur_requisition r
+        LEFT JOIN sys_dept d ON d.id = r.dept_id AND d.deleted = 0
+        LEFT JOIN sys_user u ON u.id = r.applicant_id AND u.deleted = 0
+        <where>
+            r.deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND r.req_no LIKE CONCAT('%', #{q.keyword}, '%')
+            </if>
+            <if test="q.status != null">AND r.status = #{q.status}</if>
+            <if test="q.deptId != null">AND r.dept_id = #{q.deptId}</if>
+            <if test="q.materialId != null">
+                AND EXISTS (SELECT 1 FROM pur_requisition_item ri
+                            WHERE ri.requisition_id = r.id AND ri.deleted = 0
+                              AND ri.material_id = #{q.materialId})
+            </if>
+        </where>
+        ORDER BY r.id DESC
+    </select>
+</mapper>

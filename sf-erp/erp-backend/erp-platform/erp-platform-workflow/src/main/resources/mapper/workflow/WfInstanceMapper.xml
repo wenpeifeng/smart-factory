@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  流程实例分页查询：带流程名/发起人姓名/当前待办节点（PENDING 任务节点名聚合）。
+-->
+<mapper namespace="com.erp.workflow.mapper.WfInstanceMapper">
+
+    <select id="selectInstancePage" resultType="com.erp.workflow.dto.vo.WfInstanceVO">
+        SELECT i.id,
+               i.definition_id,
+               d.flow_name,
+               i.biz_type,
+               i.biz_id,
+               i.biz_no,
+               i.status,
+               (SELECT GROUP_CONCAT(DISTINCT t.node_name)
+                  FROM wf_task t
+                 WHERE t.instance_id = i.id
+                   AND t.status = 'PENDING'
+                   AND t.deleted = 0) AS current_node,
+               i.start_user_id,
+               u.nickname AS start_user_name,
+               i.create_time,
+               i.end_time
+        FROM wf_instance i
+        LEFT JOIN wf_definition d ON d.id = i.definition_id AND d.deleted = 0
+        LEFT JOIN sys_user u ON u.id = i.start_user_id AND u.deleted = 0
+        <where>
+            i.deleted = 0
+            <if test="startUserId != null">AND i.start_user_id = #{startUserId}</if>
+            <if test="keyword != null and keyword != ''">AND i.biz_no LIKE CONCAT('%', #{keyword}, '%')</if>
+            <if test="bizType != null and bizType != ''">AND i.biz_type = #{bizType}</if>
+            <if test="status != null and status != ''">AND i.status = #{status}</if>
+        </where>
+        ORDER BY i.id DESC
+    </select>
+</mapper>

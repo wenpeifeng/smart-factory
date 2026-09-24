@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 盘点单分页（含行数/已盘行数/差异行数统计） -->
+<mapper namespace="com.erp.inventory.mapper.InvCheckMapper">
+
+    <select id="selectCheckPage" resultType="com.erp.inventory.dto.vo.CheckVO">
+        SELECT c.id,
+               c.no,
+               c.warehouse_id,
+               w.code AS warehouse_code,
+               w.name AS warehouse_name,
+               c.status,
+               c.source,
+               c.complete_time,
+               c.remark,
+               (SELECT COUNT(*) FROM inv_check_detail d
+                 WHERE d.check_id = c.id AND d.deleted = 0) AS line_count,
+               (SELECT COUNT(*) FROM inv_check_detail d
+                 WHERE d.check_id = c.id AND d.deleted = 0 AND d.actual_qty IS NOT NULL) AS actual_count,
+               (SELECT COUNT(*) FROM inv_check_detail d
+                 WHERE d.check_id = c.id AND d.deleted = 0
+                   AND d.diff_qty IS NOT NULL AND d.diff_qty != 0) AS diff_count,
+               c.create_time
+        FROM inv_check c
+                 LEFT JOIN base_warehouse w ON w.id = c.warehouse_id
+        WHERE c.deleted = 0
+        <if test="q.status != null">
+            AND c.status = #{q.status}
+        </if>
+        <if test="q.warehouseId != null">
+            AND c.warehouse_id = #{q.warehouseId}
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND c.no LIKE CONCAT('%', #{q.keyword}, '%')
+        </if>
+        ORDER BY c.id DESC
+    </select>
+
+    <!-- KPI 库存准确率：窗口内已完成盘点单的行数与差异行数（准确率=1-差异行/盘点行） -->
+    <select id="selectKpiAccuracy" resultType="java.util.HashMap">
+        SELECT COUNT(*) AS check_rows,
+               SUM(d.diff_qty IS NOT NULL AND d.diff_qty != 0) AS diff_rows
+        FROM inv_check_detail d
+                 JOIN inv_check c ON c.id = d.check_id AND c.deleted = 0
+        WHERE d.deleted = 0
+          AND c.status = 1
+          AND c.complete_time &gt;= #{beginTime}
+          AND c.complete_time &lt; #{endTime}
+    </select>
+</mapper>

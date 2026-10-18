@@ -13,3 +13,21 @@ export function changeUserAppStatus(employeeNo: string, enabled: boolean) {
     `/integration/auth/users/${encodeURIComponent(employeeNo)}/status?enabled=${enabled}`,
   )
 }
+
+export interface EmployeeProfileForm {
+  realName: string
+  position?: string
+  email?: string
+  phone?: string
+}
+
+export function updateAuthUserProfile(employeeNo: string, body: EmployeeProfileForm) {
+  return put<{ fetched: number; inserted: number; updated: number; disabled: number }>(
+    `/integration/auth/users/${encodeURIComponent(employeeNo)}/profile`,
+    body,
+  )
+}
+
+export function resetAuthUserPassword(employeeNo: string, password: string) {
+  return put<void>(`/integration/auth/users/${encodeURIComponent(employeeNo)}/password`, { password })
+}

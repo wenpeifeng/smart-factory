@@ -60,16 +60,36 @@ public class SysUserServiceImpl implements SysUserService {
     @Override
     public PageResult<UserVO> page(UserQuery query) {
         var wrapper = Wrappers.lambdaQuery(SysUser.class)
+                .eq(SysUser::getAuthAssigned, true)
                 .and(notBlank(query.getKeyword()), w -> w
                         .like(SysUser::getUsername, query.getKeyword().trim())
-                        .or().like(SysUser::getNickname, query.getKeyword().trim()))
+                        .or().like(SysUser::getEmployeeNo, query.getKeyword().trim())
+                        .or().like(SysUser::getNickname, query.getKeyword().trim())
+                        .or().like(SysUser::getPosition, query.getKeyword().trim()))
                 .eq(query.getDeptId() != null, SysUser::getDeptId, query.getDeptId())
                 .eq(query.getStatus() != null, SysUser::getStatus, query.getStatus())
-                .orderByDesc(SysUser::getId);
+                .eq(query.getIdentityStatus() != null, SysUser::getIdentityStatus, query.getIdentityStatus())
+                .ge(query.getEntryDateStart() != null, SysUser::getEntryDate, query.getEntryDateStart())
+                .le(query.getEntryDateEnd() != null, SysUser::getEntryDate, query.getEntryDateEnd())
+                .last(userOrderBy(query));
         PageResult<UserVO> page = PageUtils.of(userMapper, wrapper,
                 query.getPageNum(), query.getPageSize(), UserVO::from);
         fillDeptAndRoles(page.getRecords());
         return page;
+    }
+
+    /** 白名单排序：无论用户选择何种排序，离职人员始终置底。 */
+    private String userOrderBy(UserQuery query) {
+        String column = switch (query.getSortField() == null ? "entryDate" : query.getSortField()) {
+            case "nickname" -> "nickname";
+            case "employeeNo" -> "employee_no";
+            case "identityCreateTime" -> "identity_create_time";
+            case "status" -> "status";
+            default -> "entry_date";
+        };
+        String direction = "asc".equalsIgnoreCase(query.getSortOrder()) ? "ASC" : "DESC";
+        return "ORDER BY CASE WHEN identity_status = 2 THEN 1 ELSE 0 END ASC, "
+                + column + " " + direction + ", id DESC";
     }
 
     @Override
@@ -81,7 +101,7 @@ public class SysUserServiceImpl implements SysUserService {
     }
     @Override
     public void updateScope(Long id, UserScopeForm form) {
-        SysUser user = requireUser(id);
+        SysUser user = requireAssignedUser(id);
         user.setDataScope(form.getDataScope());
         if (form.getOrgId() != null) {
             user.setOrgId(form.getOrgId());
@@ -94,7 +114,7 @@ public class SysUserServiceImpl implements SysUserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void assignRoles(Long id, List<Long> roleIds) {
-        requireUser(id);
+        requireAssignedUser(id);
         List<Long> distinct = roleIds == null ? List.of() : roleIds.stream().distinct().toList();
         if (!distinct.isEmpty()) {
             Long bound = roleMapper.selectCount(Wrappers.lambdaQuery(SysRole.class).in(SysRole::getId, distinct));
@@ -121,14 +141,14 @@ public class SysUserServiceImpl implements SysUserService {
 
     @Override
     public List<Long> getUserOrgIds(Long id) {
-        requireUser(id);
+        requireAssignedUser(id);
         return userOrgMapper.selectOrgIdsByUserId(id);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void assignOrgs(Long id, List<Long> orgIds) {
-        requireUser(id);
+        requireAssignedUser(id);
         List<Long> distinct = orgIds == null ? List.of() : orgIds.stream()
                 .filter(Objects::nonNull).distinct().toList();
         if (!distinct.isEmpty()) {
@@ -179,6 +199,14 @@ public class SysUserServiceImpl implements SysUserService {
         SysUser user = userMapper.selectById(id);
         if (user == null) {
             throw BusinessException.ofKey(ErrorCode.DATA_NOT_EXISTS, "erp.system.user-not-exists");
+        }
+        return user;
+    }
+
+    private SysUser requireAssignedUser(Long id) {
+        SysUser user = requireUser(id);
+        if (!Boolean.TRUE.equals(user.getAuthAssigned())) {
+            throw BusinessException.ofKey(ErrorCode.BAD_REQUEST, "仅可管理认证中心已分配到本系统的员工");
         }
         return user;
     }

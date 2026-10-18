@@ -1,4 +1,5 @@
 import HasPerm from '@/components/HasPerm'
+import TableEllipsisText from '@/components/TableEllipsisText'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
@@ -40,6 +41,7 @@ import {
   type OtherDocDetail,
   type OtherDocRow,
 } from '@/api/inventory'
+import { formatDateTime } from '@/utils/date'
 
 /** 面板类型：in=其他入库 out=其他出库 */
 export type OtherDocKind = 'in' | 'out'
@@ -60,7 +62,12 @@ const REASON_SUGGESTIONS: Record<OtherDocKind, { value: string }[]> = {
 const LIST_COLUMNS: ColumnsType<OtherDocRow> = [
   { title: '单号', dataIndex: 'no', width: 150 },
   { title: '仓库', dataIndex: 'warehouseName', width: 130, render: (v: string | null) => v ?? '-' },
-  { title: '原因', dataIndex: 'reason', width: 110, render: (v: string | null) => v ?? '-' },
+  {
+    title: '原因',
+    dataIndex: 'reason',
+    width: 220,
+    render: (v: string | null) => <TableEllipsisText value={v} />,
+  },
   { title: '行数', dataIndex: 'lineCount', width: 70, align: 'right' },
   {
     title: '总数量',
@@ -76,8 +83,8 @@ const LIST_COLUMNS: ColumnsType<OtherDocRow> = [
     render: (v: number) =>
       v === 1 ? <Tag color="success">已审核</Tag> : <Tag color="default">草稿</Tag>,
   },
-  { title: '审核时间', dataIndex: 'auditTime', width: 170, render: (v: string | null) => v ?? '-' },
-  { title: '创建时间', dataIndex: 'createTime', width: 170 },
+  { title: '审核时间', dataIndex: 'auditTime', width: 180, render: formatDateTime },
+  { title: '创建时间', dataIndex: 'createTime', width: 180, render: formatDateTime },
 ]
 
 /**
@@ -180,6 +187,7 @@ export default function OtherDocPanel({ kind }: { kind: OtherDocKind }) {
       title: '操作',
       key: 'actions',
       width: 200,
+      fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => setDetailId(record.id)}>
@@ -210,9 +218,14 @@ export default function OtherDocPanel({ kind }: { kind: OtherDocKind }) {
 
   const detailLineColumns: ColumnsType<NonNullable<OtherDocDetail>['lines'][number]> = [
     { title: '物料编码', dataIndex: 'materialCode', width: 120, render: (v: string | null) => v ?? '-' },
-    { title: '物料名称', dataIndex: 'materialName', render: (v: string | null) => v ?? '-' },
+    { title: '物料名称', dataIndex: 'materialName', width: 220, render: (v: string | null) => v ?? '-' },
     { title: '数量', dataIndex: 'qty', width: 110, align: 'right', render: (v: number) => fmtQty(v) },
-    { title: '备注', dataIndex: 'remark', render: (v: string | null) => v ?? '-' },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      width: 260,
+      render: (v: string | null) => <TableEllipsisText value={v} />,
+    },
   ]
 
   return (
@@ -262,12 +275,15 @@ export default function OtherDocPanel({ kind }: { kind: OtherDocKind }) {
       </Space>
 
       <Table<OtherDocRow>
+        className="erp-nowrap-table"
         rowKey="id"
         size="small"
+        tableLayout="fixed"
         columns={columns}
         dataSource={data?.records ?? []}
         loading={isLoading || isFetching}
         locale={{ emptyText: `暂无${docName}` }}
+        scroll={{ x: 1370 }}
         pagination={{
           total: data?.total ?? 0,
           current: data?.pageNum ?? 1,
@@ -394,18 +410,21 @@ export default function OtherDocPanel({ kind }: { kind: OtherDocKind }) {
                 {detail.status === 1 ? <Tag color="success">已审核</Tag> : <Tag>草稿</Tag>}
               </Descriptions.Item>
               <Descriptions.Item label="原因">{detail.reason ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="审核时间">{detail.auditTime ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="审核时间">{formatDateTime(detail.auditTime)}</Descriptions.Item>
               <Descriptions.Item label="备注" span={2}>
                 {detail.remark ?? '-'}
               </Descriptions.Item>
             </Descriptions>
             <Table
+              className="erp-nowrap-table"
               rowKey="id"
               size="small"
+              tableLayout="fixed"
               columns={detailLineColumns}
               dataSource={detail.lines}
               pagination={false}
               locale={{ emptyText: '无明细行' }}
+              scroll={{ x: 710 }}
             />
           </>
         )}

@@ -53,5 +53,7 @@ public class IntegrationProperties {
         private String redirectUri = "http://localhost:5173/sso/callback";
         /** 服务间同步 API 令牌（请求头 X-Service-Token） */
         private String serviceToken = "auth-center-sync-token";
+        /** 认证中心事务提交后实时回调的鉴权令牌。 */
+        private String syncCallbackToken = "identity-sync-token";
     }
 }

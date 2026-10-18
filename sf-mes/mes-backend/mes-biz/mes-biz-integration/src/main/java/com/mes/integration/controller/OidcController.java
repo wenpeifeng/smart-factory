@@ -2,13 +2,16 @@ package com.mes.integration.controller;
 
 import com.mes.common.result.Result;
 import com.mes.integration.oidc.OidcAuthorizeVO;
+import com.mes.integration.oidc.OidcPasswordLoginForm;
 import com.mes.integration.oidc.OidcTokenVO;
 import com.mes.integration.service.OidcService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,6 +35,14 @@ public class OidcController {
     @GetMapping("/authorize-url")
     public Result<OidcAuthorizeVO> authorizeUrl() {
         return Result.ok(oidcService.buildAuthorizeUrl());
+    }
+
+    /** 企业账号原生登录：认证与 OIDC 授权均由服务端完成，浏览器不跳出 MES */
+    @Operation(summary = "企业账号原生登录")
+    @PostMapping("/password-login")
+    public Result<com.mes.system.dto.auth.LoginVO> passwordLogin(
+            @Valid @RequestBody OidcPasswordLoginForm form) {
+        return Result.ok(oidcService.loginByPassword(form));
     }
 
     /**

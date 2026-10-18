@@ -5,30 +5,30 @@
   },
   "login": {
     "brand": {
-      "title": "ERP Group Suite",
-      "subtitle": "Supply Chain · Finance · Manufacturing, Unified"
+      "title": "MES Manufacturing Execution",
+      "subtitle": "Work Orders · Reporting · Quality · Traceability"
     },
     "values": [
       {
-        "title": "End-to-end Supply Chain",
-        "desc": "Purchase, sales and inventory documents penetrate in real time"
+        "title": "One view of the shop floor",
+        "desc": "Work orders, dispatching, station reporting and WIP stay connected in real time"
       },
       {
-        "title": "Finance-Business Integration",
-        "desc": "Vouchers generated automatically, 80% faster month-end closing"
+        "title": "Quality traceability throughout",
+        "desc": "Batches, serial numbers and inspection records remain linked across production"
       },
       {
-        "title": "Multi-org Group Control",
-        "desc": "Tenant isolation plus 5-level data scope, one group, one picture"
+        "title": "Close the equipment loop",
+        "desc": "Inspection, Andon, maintenance and equipment efficiency return to one action flow"
       }
     ],
     "metrics": {
-      "turnover": "Inventory Turnover",
-      "delivery": "On-time Delivery",
-      "closing": "Closing Cycle"
+      "wip": "Work in Process",
+      "quality": "Process Quality",
+      "equipment": "Equipment Efficiency"
     },
-    "welcome": "Welcome back",
-    "subtitle": "Sign in to your account to continue",
+    "welcome": "Sign in to MES",
+    "subtitle": "Use your enterprise account to enter manufacturing execution",
     "username": "Account",
     "usernamePlaceholder": "Enter your account",
     "usernameRequired": "Please enter your account",
@@ -44,7 +44,15 @@
     "step2Subtitle": "Your account belongs to multiple organizations. Pick one to enter",
     "entering": "Entering...",
     "backToStep1": "Back to sign in",
-    "currentOrg": "Current organization"
+    "currentOrg": "Current organization",
+    "ssoButton": "Sign in with Auth Center",
+    "ssoHint": "Your identity and access are securely verified by the group identity service",
+    "emergencyEntry": "Auth Center unavailable? Use emergency admin sign-in",
+    "emergencyTitle": "Emergency administrator sign-in",
+    "emergencySubtitle": "Sign in with this system's emergency administrator account",
+    "emergencyHint": "Use only when Auth Center is unavailable. Authorized system administrators only.",
+    "emergencySubmit": "Emergency sign-in",
+    "backToSso": "Back to enterprise sign-in"
   },
   "topbar": {
     "switchOrg": "Switch organization",

@@ -3,6 +3,7 @@ package com.mes.system.dto.user;
 import com.mes.system.entity.SysUser;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -23,8 +24,19 @@ public class UserVO {
     /** 工号（auth-center 身份键；本地降级账号为空） */
     private String employeeNo;
 
+    private Boolean identityImmutable;
+
+    private Integer identityStatus;
+    private String identityInactiveReason;
+    private LocalDate entryDate;
+    private LocalDate leaveDate;
+    private LocalDateTime identityCreateTime;
+    private LocalDateTime identityUpdateTime;
+
     /** 显示姓名 */
     private String nickname;
+
+    private String position;
 
     /** 手机号 */
     private String phone;
@@ -73,7 +85,15 @@ public class UserVO {
         vo.setId(user.getId());
         vo.setUsername(user.getUsername());
         vo.setEmployeeNo(user.getEmployeeNo());
+        vo.setIdentityImmutable(Boolean.TRUE.equals(user.getIdentityImmutable()));
+        vo.setIdentityStatus(user.getIdentityStatus());
+        vo.setIdentityInactiveReason(user.getIdentityInactiveReason());
+        vo.setEntryDate(user.getEntryDate());
+        vo.setLeaveDate(user.getLeaveDate());
+        vo.setIdentityCreateTime(user.getIdentityCreateTime());
+        vo.setIdentityUpdateTime(user.getIdentityUpdateTime());
         vo.setNickname(user.getNickname());
+        vo.setPosition(user.getPosition());
         vo.setPhone(user.getPhone());
         vo.setEmail(user.getEmail());
         vo.setDeptId(user.getDeptId());

@@ -43,16 +43,67 @@ function App() {
       locale={antdLocale}
       theme={{
         token: {
-          colorPrimary: '#1668dc',
-          colorInfo: '#1668dc',
+          colorPrimary: '#14785d',
+          colorInfo: '#14785d',
+          colorSuccess: '#238467',
+          colorWarning: '#c9821c',
+          colorBgLayout: '#f4f7f6',
+          colorBgContainer: '#ffffff',
+          colorText: '#172b26',
+          colorTextSecondary: '#526760',
+          colorTextTertiary: '#778983',
+          colorBorder: '#cfdbd6',
+          colorBorderSecondary: '#e2e9e6',
+          controlOutline: 'rgba(20, 120, 93, 0.18)',
           borderRadius: 8,
           fontSize: 14,
+          lineWidth: 1,
+        },
+        components: {
+          Button: {
+            primaryShadow: '0 4px 12px rgba(20, 120, 93, 0.16)',
+            fontWeight: 600,
+          },
+          Layout: {
+            bodyBg: '#f4f7f6',
+            headerBg: '#ffffff',
+            siderBg: '#f8faf9',
+          },
+          Menu: {
+            itemBg: 'transparent',
+            itemColor: '#435b54',
+            itemHoverBg: '#edf4f1',
+            itemHoverColor: '#172b26',
+            itemSelectedBg: '#dfeee8',
+            itemSelectedColor: '#0f674f',
+            itemBorderRadius: 8,
+          },
+          Table: {
+            headerBg: '#eaf1ee',
+            headerColor: '#304b43',
+            headerSplitColor: '#d9e3df',
+            borderColor: '#e2e9e6',
+            rowHoverBg: '#f3f8f6',
+            cellPaddingBlock: 14,
+            cellPaddingInline: 16,
+          },
+          Card: {
+            colorBorderSecondary: '#dde6e2',
+          },
+          Input: {
+            activeBorderColor: '#14785d',
+            hoverBorderColor: '#589a85',
+          },
+          Select: {
+            activeBorderColor: '#14785d',
+            hoverBorderColor: '#589a85',
+          },
         },
       }}
     >
       <AntdApp>
         <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
+          <RouterProvider router={router} future={{ v7_startTransition: true }} />
         </QueryClientProvider>
       </AntdApp>
     </ConfigProvider>
@@ -61,8 +112,8 @@ function App() {
 
 /**
  * 应用入口。
- * 主题：ERP 湛蓝主色（专业感），圆角 token 稍大以获得现代视觉，
- * 配合 Framer Motion 页面转场（见 layouts/MainLayout）形成"智能动感"风格。
+ * 主题：与 MES 登录页一致的制造现场青绿，安全橙仅用于告警和关键强调。
+ * 与 ERP 的经营蓝保持明显区分，同时保持登录前后的品牌连续性。
  */
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

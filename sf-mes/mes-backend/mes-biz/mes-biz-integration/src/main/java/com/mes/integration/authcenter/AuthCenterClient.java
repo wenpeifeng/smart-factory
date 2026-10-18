@@ -32,4 +32,10 @@ public interface AuthCenterClient {
      * @param employeeNo 工号
      */
     void enableUser(String employeeNo);
+
+    void updateProfile(String employeeNo, ProfileForm form);
+
+    void resetPassword(String employeeNo, String password);
+
+    record ProfileForm(String realName, String position, String email, String phone) { }
 }

@@ -46,7 +46,7 @@ def check(name, cond, detail=""):
 def main():
     global TOKEN
     # ---------- 0. 登录 ----------
-    login = call("POST", "/auth/login", {"username": "admin", "password": "admin123"})
+    login = call("POST", "/auth/login", {"username": "erp_admin", "password": "123456"})
     TOKEN = login["token"] if isinstance(login, dict) and "token" in login else login
     check("登录", True)
 

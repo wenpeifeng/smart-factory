@@ -2,6 +2,8 @@ package com.mes.system.dto.user;
 
 import lombok.Data;
 
+import java.time.LocalDate;
+
 /**
  * 用户分页查询条件。
  */
@@ -16,6 +18,14 @@ public class UserQuery {
 
     /** 状态过滤：1-启用 0-停用 */
     private Integer status;
+
+    /** 集团人员状态：1在职 2离职 3全局停用。 */
+    private Integer identityStatus;
+
+    private LocalDate entryDateStart;
+    private LocalDate entryDateEnd;
+    private String sortField;
+    private String sortOrder;
 
     /** 页码，从 1 开始 */
     private long pageNum = 1;

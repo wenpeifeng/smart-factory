@@ -12,8 +12,10 @@ import java.lang.annotation.Target;
  * 接口权限注解 —— Controller 方法级的权限码校验（统一鉴权的核心入口）。
  * <p>
  * 权限码规范：{@code 模块:资源:操作}，与 sys_menu 按钮型菜单的 perms 字段一一对应。
- * 登录后用户的权限码由 JwtAuthFilter 从角色-菜单关系加载进 SecurityContext
- * （超管角色自动持有全部按钮权限），本注解据此做方法级拦截，无权访问返回 403 Result JSON。
+ * 登录后用户的权限码由 JwtAuthFilter 从角色-菜单关系加载进 SecurityContext，
+ * 本注解据此做方法级拦截，无权访问返回 403 Result JSON。
+ * 内置 {@code super_admin} 角色直接放行，避免新增接口权限码尚未写入菜单数据时
+ * 出现“超管能看到功能但接口返回 403”的不一致。
  * <p>
  * 用法：
  * <pre>{@code
@@ -29,7 +31,7 @@ import java.lang.annotation.Target;
 @Documented
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-@PreAuthorize("hasAuthority('{value}')")
+@PreAuthorize("hasAuthority('{value}') or hasAuthority('ROLE_super_admin')")
 public @interface RequirePerm {
 
     /**

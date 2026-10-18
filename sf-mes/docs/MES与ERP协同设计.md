@@ -41,7 +41,7 @@
 > 统一认证中心是独立仓库 `../sf-auth`（由专门会话建设），不是 MES 或 ERP 的职责；MES 与 ERP 的互信经由 auth-center 统一登录建立，不再使用"ERP 账号源头 + 共享 JWT"方案。
 
 - **身份主数据在 auth-center**：账号生命周期（入职/转岗/离职）、应用进门权（该用户可进哪些应用）、`mes.admin` 标签（=MES 本地超管）均只在 auth-center 维护。
-- **MES 以 OIDC 客户端接入**：授权码 + PKCE；登录跳转 auth-center，回调换令牌（`/sso/callback` 已预留）；本地账号密码直登仅作认证中心不可用时的降级。
+- **MES 以 OIDC 客户端接入**：登录页保持 MES 原生账号密码交互，由 MES 后端作为可信 BFF 在服务端完成 auth-center 登录、授权码 + PKCE 换令牌，浏览器无跳转；标准 `/sso/callback` 仍保留作兼容；本地账号密码直登仅作认证中心不可用时的降级。
 - **用户/组织同步**：MES 调 auth-center 服务间 API 同步"已分配到本应用"的用户/组织为本地副本（sys_user/sys_dept）；对账式同步，主账号软删除 → 本地 active=false；MES 管理端可对本应用用户做禁用/启用（转调 auth-center 应用级启停接口）。
 - **权限分治**：普通角色（报工员/质检员等）与菜单/按钮/数据权限完全在 MES 管理端内部维护（RBAC + `@RequirePerm`）；`mes.admin` 标签映射本地超管（通配全部菜单）。
 - auth-center 端点契约以其仓库 docs 为准（client_id、/authorize、/token、JWKS、roles claim）；未就绪前 MES 用契约 stub 开发联调。

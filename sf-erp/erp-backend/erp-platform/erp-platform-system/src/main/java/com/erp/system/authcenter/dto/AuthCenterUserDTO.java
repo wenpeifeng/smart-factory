@@ -3,6 +3,8 @@ package com.erp.system.authcenter.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -28,6 +30,14 @@ public class AuthCenterUserDTO {
 
     /** 岗位 */
     private String position;
+    private String email;
+    private String phone;
+    private String accountSource;
+    private Boolean immutable;
+    private Integer identityStatus;
+    private LocalDate entryDate;
+    private LocalDate leaveDate;
+    private LocalDateTime identityCreateTime;
 
     /** 在职且有权进入本应用 */
     private Boolean active;
@@ -39,5 +49,5 @@ public class AuthCenterUserDTO {
     private List<String> roles;
 
     /** 最近变更时间（增量同步水位，ISO-8601） */
-    private String updateTime;
+    private LocalDateTime updateTime;
 }

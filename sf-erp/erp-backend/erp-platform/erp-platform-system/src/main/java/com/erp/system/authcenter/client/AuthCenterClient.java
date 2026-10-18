@@ -32,4 +32,12 @@ public interface AuthCenterClient {
      * @param employeeNo 工号
      */
     void enableUser(String employeeNo);
+
+    /** 回写认证中心基础档案。 */
+    void updateProfile(String employeeNo, ProfileForm form);
+
+    /** 重置认证中心统一账号密码。 */
+    void resetPassword(String employeeNo, String password);
+
+    record ProfileForm(String realName, String position, String email, String phone) { }
 }

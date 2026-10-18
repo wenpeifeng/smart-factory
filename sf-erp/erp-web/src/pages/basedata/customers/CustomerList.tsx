@@ -144,14 +144,14 @@ export default function CustomerList() {
   }
 
   const columns: ColumnsType<Customer> = [
-    { title: '客户编码', dataIndex: 'code', width: 120 },
-    { title: '客户名称', dataIndex: 'name', width: 180, ellipsis: true },
+    { title: '客户编码', dataIndex: 'code', width: 140 },
+    { title: '客户名称', dataIndex: 'name', width: 240, ellipsis: true },
     { title: '联系人', dataIndex: 'contact', width: 90 },
-    { title: '手机号', dataIndex: 'phone', width: 120 },
-    { title: '统一社会信用代码', dataIndex: 'creditCode', width: 170 },
-    { title: '结算方式', dataIndex: 'settleTypeName', width: 90 },
-    { title: '信用额度', dataIndex: 'creditLimit', width: 110, align: 'right' },
-    { title: '期初应收', dataIndex: 'initReceivable', width: 100, align: 'right' },
+    { title: '手机号', dataIndex: 'phone', width: 140 },
+    { title: '统一社会信用代码', dataIndex: 'creditCode', width: 200 },
+    { title: '结算方式', dataIndex: 'settleTypeName', width: 100 },
+    { title: '信用额度', dataIndex: 'creditLimit', width: 120, align: 'right' },
+    { title: '期初应收', dataIndex: 'initReceivable', width: 110, align: 'right' },
     {
       title: '等级',
       dataIndex: 'level',
@@ -160,7 +160,7 @@ export default function CustomerList() {
         <Tag color={v === 'A' ? 'gold' : v === 'C' ? 'default' : 'blue'}>{v ?? 'B'}</Tag>
       ),
     },
-    { title: '地址', dataIndex: 'address', ellipsis: true },
+    { title: '地址', dataIndex: 'address', width: 280, ellipsis: true },
     {
       title: '状态',
       dataIndex: 'status',
@@ -171,7 +171,7 @@ export default function CustomerList() {
     {
       title: '操作',
       key: 'action',
-      width: 210,
+      width: 240,
       fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
@@ -227,12 +227,14 @@ export default function CustomerList() {
         </Space>
 
         <Table<Customer>
+          className="erp-nowrap-table"
           rowKey="id"
           size="small"
           columns={columns}
           dataSource={data?.records ?? []}
           loading={isLoading || isFetching}
-          scroll={{ x: 1300 }}
+          tableLayout="fixed"
+          scroll={{ x: 1810 }}
           pagination={{
             total: data?.total ?? 0,
             current: data?.pageNum ?? 1,

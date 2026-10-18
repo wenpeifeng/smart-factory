@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Button, Checkbox, Form, Input, Tag, Tooltip } from 'antd'
+import { Alert, Button, Checkbox, Form, Input, Tag, Tooltip } from 'antd'
 import {
   UserOutlined,
   LockOutlined,
@@ -8,13 +8,13 @@ import {
   SafetyCertificateOutlined,
   GlobalOutlined,
   CheckCircleFilled,
-  ArrowUpOutlined,
-  ClockCircleOutlined,
-  ThunderboltOutlined,
+  ToolOutlined,
+  DashboardOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
-import { getAuthorizeUrl } from '@/api/oidc'
+import { passwordLogin } from '@/api/oidc'
 import { login, fetchMe, switchOrg, type AuthResp } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { changeLang, type Lang } from '@/locales'
@@ -25,7 +25,7 @@ interface LoginForm {
 }
 
 /** 记住账号的 localStorage key */
-const REMEMBER_KEY = 'erp-login-username'
+const REMEMBER_KEY = 'mes-login-username'
 
 /** 窄屏断点：<768px 分屏降为单列（品牌区隐藏，登录卡全宽） */
 function useIsNarrow() {
@@ -52,20 +52,23 @@ const riseIn = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' as const } },
 }
 
-/* ---------------- 左侧品牌区：发光数据线 + 浮动指标卡 + 价值点轮播 ---------------- */
+/* ---------------- 左侧品牌区：工位流转线 + 现场指标卡 + 价值点轮播 ---------------- */
 
-/** 发光数据线条（SVG 流动虚线，模拟数据管道） */
-function DataLines() {
+/** 直角工位流转线：区别于 ERP 的经营数据曲线，表达车间过站与工序衔接。 */
+function ProductionLines() {
   const paths = [
-    { d: 'M-40,220 C240,80 420,420 760,250 S1080,110 1240,300', color: '#36cfc9', dur: 14 },
-    { d: 'M-40,430 C300,300 520,560 820,420 S1120,300 1240,470', color: '#69b7ff', dur: 20 },
-    { d: 'M-40,620 C260,500 560,700 860,560 S1140,470 1240,620', color: '#1668dc', dur: 26 },
+    { d: 'M-40,210 H190 V300 H500 V205 H850 V330 H1240', color: '#ffb547', dur: 14 },
+    { d: 'M-40,455 H270 V385 H620 V515 H970 V430 H1240', color: '#7fe3c8', dur: 20 },
+    { d: 'M-40,650 H160 V575 H470 V665 H780 V560 H1080 V640 H1240', color: '#2da680', dur: 26 },
+  ]
+  const stations = [
+    [190, 300], [500, 205], [850, 330], [270, 385], [620, 515], [970, 430],
   ]
   return (
     <svg
       viewBox="0 0 1200 800"
       preserveAspectRatio="none"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.85 }}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.48 }}
     >
       {paths.map((p, i) => (
         <motion.path
@@ -86,11 +89,23 @@ function DataLines() {
           }}
         />
       ))}
+      {stations.map(([cx, cy], index) => (
+        <motion.circle
+          key={`${cx}-${cy}`}
+          cx={cx}
+          cy={cy}
+          r="6"
+          fill={index % 2 === 0 ? '#ffb547' : '#7fe3c8'}
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: [0.45, 1, 0.45], scale: [0.8, 1.2, 0.8] }}
+          transition={{ duration: 2.8, repeat: Infinity, delay: index * 0.3 }}
+        />
+      ))}
     </svg>
   )
 }
 
-/** 浮动几何指标卡（模拟经营 KPI） */
+/** 浮动现场指标卡。 */
 function MetricCard({
   icon,
   value,
@@ -116,21 +131,21 @@ function MetricCard({
       style={{
         position: 'absolute',
         padding: '14px 18px',
-        borderRadius: 14,
-        background: 'rgba(255,255,255,0.09)',
-        border: '1px solid rgba(255,255,255,0.18)',
+        borderRadius: 10,
+        background: 'rgba(255,255,255,0.72)',
+        border: '1px solid rgba(22,118,92,0.16)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
-        color: '#fff',
-        boxShadow: '0 8px 32px rgba(3,20,40,0.35)',
+        color: '#173d33',
+        boxShadow: '0 10px 28px rgba(35,91,72,0.14)',
         ...style,
       }}
     >
       <div style={{ fontSize: 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ color: '#36cfc9' }}>{icon}</span>
+        <span style={{ color: '#ffb547' }}>{icon}</span>
         {value}
       </div>
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#5f796f', marginTop: 4 }}>{label}</div>
     </motion.div>
   )
 }
@@ -145,7 +160,7 @@ function BrandPanel({
   title: string
   subtitle: string
   values: { title: string; desc: string }[]
-  metrics: { turnover: string; delivery: string; closing: string }
+  metrics: { wip: string; quality: string; equipment: string }
 }) {
   const [idx, setIdx] = useState(0)
   useEffect(() => {
@@ -160,14 +175,14 @@ function BrandPanel({
         height: '100%',
         position: 'relative',
         overflow: 'hidden',
-        background: 'linear-gradient(160deg, #0a1929 0%, #0d2b4e 55%, #1668dc 130%)',
+        background: 'linear-gradient(155deg, #f1f8f3 0%, #e3f1e9 58%, #d5eadf 130%)',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
         padding: '48px 56px',
       }}
     >
-      {/* 柔光斑 + 数据线 */}
+      {/* 柔光斑 + 工位流转线 */}
       <div
         style={{
           position: 'absolute',
@@ -176,7 +191,7 @@ function BrandPanel({
           left: -140,
           top: -120,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(54,207,201,0.22) 0%, transparent 65%)',
+          background: 'radial-gradient(circle, rgba(255,181,71,0.16) 0%, transparent 65%)',
         }}
       />
       <div
@@ -187,30 +202,30 @@ function BrandPanel({
           right: -120,
           bottom: -140,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(22,104,220,0.35) 0%, transparent 65%)',
+          background: 'radial-gradient(circle, rgba(45,166,128,0.16) 0%, transparent 65%)',
         }}
       />
-      <DataLines />
+      <ProductionLines />
 
       {/* 浮动指标卡 */}
       <MetricCard
-        icon={<ArrowUpOutlined />}
-        value="+12.5%"
-        label={metrics.turnover}
+        icon={<ToolOutlined />}
+        value="WIP"
+        label={metrics.wip}
         style={{ left: '16%', top: '24%' }}
         delay={0.9}
       />
       <MetricCard
-        icon={<ThunderboltOutlined />}
-        value="98.2%"
-        label={metrics.delivery}
+        icon={<CheckCircleOutlined />}
+        value="FPY"
+        label={metrics.quality}
         style={{ right: '12%', top: '38%' }}
         delay={1.15}
       />
       <MetricCard
-        icon={<ClockCircleOutlined />}
-        value="T+3"
-        label={metrics.closing}
+        icon={<DashboardOutlined />}
+        value="OEE"
+        label={metrics.equipment}
         style={{ left: '22%', bottom: '30%' }}
         delay={1.4}
       />
@@ -221,22 +236,22 @@ function BrandPanel({
           style={{
             width: 42,
             height: 42,
-            borderRadius: 12,
-            background: 'linear-gradient(135deg,#1668dc,#36cfc9)',
+            borderRadius: 9,
+            background: 'linear-gradient(135deg,#16765c,#ffb547)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 20,
             fontWeight: 800,
             color: '#fff',
-            boxShadow: '0 6px 20px rgba(22,104,220,0.55)',
+            boxShadow: '0 6px 20px rgba(22,118,92,0.52)',
           }}
         >
-          E
+          M
         </div>
         <div>
-          <div style={{ color: '#fff', fontSize: 19, fontWeight: 700 }}>{title}</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{subtitle}</div>
+          <div style={{ color: '#173d33', fontSize: 19, fontWeight: 700 }}>{title}</div>
+          <div style={{ color: '#5f796f', fontSize: 12 }}>{subtitle}</div>
         </div>
       </motion.div>
 
@@ -250,11 +265,11 @@ function BrandPanel({
             exit={{ opacity: 0, y: -16 }}
             transition={{ duration: 0.45, ease: 'easeOut' }}
           >
-            <div style={{ height: 4, width: 42, borderRadius: 2, background: '#36cfc9', marginBottom: 18 }} />
-            <div style={{ color: '#fff', fontSize: 27, fontWeight: 700, lineHeight: 1.35 }}>
+            <div style={{ height: 4, width: 42, borderRadius: 2, background: '#ffb547', marginBottom: 18 }} />
+            <div style={{ color: '#173d33', fontSize: 27, fontWeight: 700, lineHeight: 1.35 }}>
               {values[idx]?.title}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: 14.5, marginTop: 12, lineHeight: 1.7 }}>
+            <div style={{ color: '#526f65', fontSize: 14.5, marginTop: 12, lineHeight: 1.7 }}>
               {values[idx]?.desc}
             </div>
           </motion.div>
@@ -268,7 +283,7 @@ function BrandPanel({
                 width: i === idx ? 22 : 8,
                 height: 4,
                 borderRadius: 2,
-                background: i === idx ? '#36cfc9' : 'rgba(255,255,255,0.28)',
+                background: i === idx ? '#d99125' : 'rgba(22,118,92,0.20)',
                 transition: 'all .3s',
               }}
             />
@@ -276,8 +291,8 @@ function BrandPanel({
         </div>
       </div>
 
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, zIndex: 2 }}>
-        © 2026 MES Suite · 与 ERP 协同的制造执行系统
+      <div style={{ color: '#71877e', fontSize: 12, zIndex: 2 }}>
+        © 2026 MES · Shop-floor execution & traceability
       </div>
     </div>
   )
@@ -285,7 +300,7 @@ function BrandPanel({
 
 /* ---------------- 聚焦高亮输入域 ---------------- */
 
-/** 输入框聚焦动效：容器微微提亮 + 底部湛蓝高亮线展开 */
+/** 输入框聚焦动效：使用 MES 石墨绿与安全橙。 */
 function FocusField({ children }: { children: ReactNode }) {
   const [focused, setFocused] = useState(false)
   return (
@@ -297,9 +312,9 @@ function FocusField({ children }: { children: ReactNode }) {
       <motion.div
         animate={{
           boxShadow: focused
-            ? '0 4px 18px rgba(22,104,220,0.16)'
-            : '0 0 0 0 rgba(22,104,220,0)',
-          borderColor: focused ? 'rgba(22,104,220,0.55)' : 'rgba(0,0,0,0,0)',
+            ? '0 4px 18px rgba(22,118,92,0.16)'
+            : '0 0 0 0 rgba(22,118,92,0)',
+          borderColor: focused ? 'rgba(22,118,92,0.55)' : 'rgba(0,0,0,0)',
         }}
         style={{ borderRadius: 10 }}
       >
@@ -316,9 +331,9 @@ function FocusField({ children }: { children: ReactNode }) {
           bottom: 4,
           height: 2,
           borderRadius: 1,
-          background: 'linear-gradient(90deg,#1668dc,#36cfc9)',
+          background: 'linear-gradient(90deg,#16765c,#ffb547)',
           transformOrigin: 'center',
-          boxShadow: '0 0 8px rgba(22,104,220,0.6)',
+          boxShadow: '0 0 8px rgba(22,118,92,0.45)',
         }}
       />
     </div>
@@ -328,8 +343,8 @@ function FocusField({ children }: { children: ReactNode }) {
 /* ---------------- 登录页主体 ---------------- */
 
 /**
- * 登录页（2026 分屏式现代设计）。
- * 左 45% 品牌区（深色渐变 + Framer Motion 发光数据线/浮动指标卡/价值点轮播），
+ * MES 登录页：石墨绿车间基调 + 安全橙重点色。
+ * 左 45% 品牌区使用工位流转线、现场指标卡和制造执行价值点，
  * 右玻璃拟态登录卡；两步式：账号密码 →（多组织时）选择进入的组织 → switch-org 重签 → 进门户。
  * 微交互：错峰入场、输入聚焦高亮、按钮 loading、密码错误卡片左右抖动。
  * <768px 窄屏自动降为单列（品牌区隐藏）。
@@ -340,6 +355,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [shake, setShake] = useState(false)
   const [remember, setRemember] = useState(() => !!localStorage.getItem(REMEMBER_KEY))
+  const [showEmergency, setShowEmergency] = useState(false)
   /** 两步式：form=账号密码，org=选择组织 */
   const [step, setStep] = useState<'form' | 'org'>('form')
   const [authResp, setAuthResp] = useState<AuthResp | null>(null)
@@ -358,21 +374,11 @@ export default function Login() {
   /** 回跳来源页（守卫重定向时记录），默认工作台 */
   const from = (location.state as { from?: string })?.from ?? '/dashboard'
 
-  /** 统一认证登录：跳转 auth-center 授权页（PKCE 由后端生成） */
-  const onSso = async () => {
-    try {
-      const { authorizeUrl } = await getAuthorizeUrl()
-      window.location.href = authorizeUrl
-    } catch {
-      // 提示已由拦截器统一弹出
-    }
-  }
-
-  /** 第一步：账号密码登录 */
+  /** 第一步：企业账号默认走认证中心；应急模式才使用 MES 本地账号。 */
   const onFinish = async (formValue: LoginForm) => {
     setLoading(true)
     try {
-      const resp = await login(formValue)
+      const resp = showEmergency ? await login(formValue) : await passwordLogin(formValue)
       setAuth(resp.token, resp.user, {
         tenantId: resp.tenantId,
         orgId: resp.orgId,
@@ -424,12 +430,13 @@ export default function Login() {
     width: isNarrow ? 'calc(100vw - 40px)' : 420,
     maxWidth: 420,
     padding: isNarrow ? '30px 26px' : '40px 40px',
-    borderRadius: 20,
-    background: 'rgba(255,255,255,0.72)',
-    backdropFilter: 'blur(20px) saturate(1.4)',
-    WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
-    border: '1px solid rgba(255,255,255,0.85)',
-    boxShadow: '0 24px 64px rgba(10,25,41,0.14), inset 0 1px 0 rgba(255,255,255,0.9)',
+    borderRadius: 16,
+    background: 'rgba(255,255,255,0.86)',
+    backdropFilter: 'blur(18px) saturate(1.2)',
+    WebkitBackdropFilter: 'blur(18px) saturate(1.2)',
+    border: '1px solid rgba(22,118,92,0.12)',
+    borderTop: '3px solid #ffb547',
+    boxShadow: '0 24px 64px rgba(13,45,36,0.14), inset 0 1px 0 rgba(255,255,255,0.9)',
   }
 
   const tenantLabel = (id: number | null | undefined) =>
@@ -444,9 +451,9 @@ export default function Login() {
           subtitle={t('login.brand.subtitle')}
           values={values}
           metrics={{
-            turnover: t('login.metrics.turnover'),
-            delivery: t('login.metrics.delivery'),
-            closing: t('login.metrics.closing'),
+            wip: t('login.metrics.wip'),
+            quality: t('login.metrics.quality'),
+            equipment: t('login.metrics.equipment'),
           }}
         />
       )}
@@ -460,9 +467,11 @@ export default function Login() {
           alignItems: 'center',
           justifyContent: 'center',
           background:
-            'radial-gradient(900px 500px at 80% 10%, rgba(54,207,201,0.10), transparent 60%),' +
-            'radial-gradient(800px 600px at 15% 90%, rgba(22,104,220,0.10), transparent 60%),' +
-            '#f6f9fc',
+            'linear-gradient(rgba(22,118,92,0.035) 1px, transparent 1px),' +
+            'linear-gradient(90deg, rgba(22,118,92,0.035) 1px, transparent 1px),' +
+            'radial-gradient(800px 520px at 85% 8%, rgba(255,181,71,0.12), transparent 62%),' +
+            '#f3f6f2',
+          backgroundSize: '32px 32px, 32px 32px, auto, auto',
         }}
       >
         {/* 语言切换（右上角悬浮） */}
@@ -502,8 +511,8 @@ export default function Login() {
                       width: 40,
                       height: 40,
                       margin: '0 auto 10px',
-                      borderRadius: 12,
-                      background: 'linear-gradient(135deg,#1668dc,#36cfc9)',
+                      borderRadius: 9,
+                      background: 'linear-gradient(135deg,#16765c,#ffb547)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -512,7 +521,7 @@ export default function Login() {
                       color: '#fff',
                     }}
                   >
-                    E
+                    M
                   </div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: '#0a1929' }}>
                     {t('login.brand.title')}
@@ -523,14 +532,30 @@ export default function Login() {
               {step === 'form' ? (
                 <>
                   <motion.div variants={riseIn} style={{ marginBottom: 26 }}>
+                    <div
+                      style={{
+                        color: '#16765c',
+                        fontSize: 11,
+                        fontWeight: 750,
+                        letterSpacing: 1.8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      MES · SHOP FLOOR EXECUTION
+                    </div>
                     <div style={{ fontSize: 24, fontWeight: 750, color: '#0a1929' }}>
-                      {t('login.welcome')}
+                      {showEmergency ? t('login.emergencyTitle') : t('login.welcome')}
                     </div>
                     <div style={{ color: '#7b8794', fontSize: 13.5, marginTop: 6 }}>
-                      {t('login.subtitle')}
+                      {showEmergency ? t('login.emergencySubtitle') : t('login.subtitle')}
                     </div>
                   </motion.div>
 
+                  {showEmergency && (
+                    <motion.div variants={riseIn} style={{ marginBottom: 18 }}>
+                      <Alert type="warning" showIcon message={t('login.emergencyHint')} />
+                    </motion.div>
+                  )}
                   <Form<LoginForm>
                     form={form}
                     onFinish={onFinish}
@@ -566,16 +591,11 @@ export default function Login() {
                         </Form.Item>
                       </FocusField>
                     </motion.div>
-
-                    <motion.div
-                      variants={riseIn}
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}
-                    >
+                    <motion.div variants={riseIn} style={{ marginBottom: 18 }}>
                       <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)}>
                         {t('login.remember')}
                       </Checkbox>
                     </motion.div>
-
                     <motion.div variants={riseIn}>
                       <Button
                         type="primary"
@@ -583,17 +603,40 @@ export default function Login() {
                         block
                         htmlType="submit"
                         loading={loading}
-                        style={{ height: 46, fontWeight: 600, letterSpacing: 4 }}
+                        style={{ height: 46, fontWeight: 650, background: '#16765c', borderColor: '#16765c' }}
                       >
-                        {loading ? t('login.submitting') : t('login.submit')}
-                      </Button>
-                    </motion.div>
-                    <motion.div variants={riseIn} style={{ marginTop: 12 }}>
-                      <Button size="large" block onClick={onSso} style={{ height: 46 }}>
-                        统一认证登录（SSO）
+                        {loading
+                          ? t('login.submitting')
+                          : showEmergency
+                            ? t('login.emergencySubmit')
+                            : t('login.submit')}
                       </Button>
                     </motion.div>
                   </Form>
+                  {!showEmergency && (
+                    <motion.div
+                      variants={riseIn}
+                      style={{ color: '#71877e', fontSize: 12, textAlign: 'center', marginTop: 10 }}
+                    >
+                      <SafetyCertificateOutlined style={{ marginRight: 6, color: '#16765c' }} />
+                      {t('login.ssoHint')}
+                    </motion.div>
+                  )}
+                  <motion.div variants={riseIn}>
+                    <div style={{ borderTop: '1px solid #e3ebe6', margin: '22px 0 10px' }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <Button
+                        type="link"
+                        onClick={() => {
+                          setShowEmergency((value) => !value)
+                          form.setFieldValue('password', '')
+                        }}
+                        style={{ color: '#58736a' }}
+                      >
+                        {showEmergency ? t('login.backToSso') : t('login.emergencyEntry')}
+                      </Button>
+                    </div>
+                  </motion.div>
                 </>
               ) : (
                 /* ---------- 第二步：选择进入的组织 ---------- */
@@ -603,7 +646,7 @@ export default function Login() {
                       {t('login.step2Title')}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Tag icon={<SafetyCertificateOutlined />} color="blue">
+                      <Tag icon={<SafetyCertificateOutlined />} color="green">
                         {tenantLabel(authResp?.tenantId)}
                       </Tag>
                       <span style={{ color: '#7b8794', fontSize: 13 }}>{t('login.step2Subtitle')}</span>
@@ -619,7 +662,7 @@ export default function Login() {
                           initial={{ opacity: 0, y: 16 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.1 + i * 0.08, duration: 0.4, ease: 'easeOut' }}
-                          whileHover={{ y: -5, boxShadow: '0 14px 36px rgba(22,104,220,0.20)' }}
+                          whileHover={{ y: -5, boxShadow: '0 14px 36px rgba(22,118,92,0.20)' }}
                           whileTap={{ scale: 0.985 }}
                           onClick={() => enterOrg(org.id)}
                           style={{
@@ -629,9 +672,9 @@ export default function Login() {
                             padding: '14px 18px',
                             borderRadius: 14,
                             border: isCurrent
-                              ? '1.5px solid rgba(22,104,220,0.65)'
-                              : '1px solid rgba(22,104,220,0.14)',
-                            background: isCurrent ? 'rgba(22,104,220,0.06)' : 'rgba(255,255,255,0.8)',
+                              ? '1.5px solid rgba(22,118,92,0.65)'
+                              : '1px solid rgba(22,118,92,0.14)',
+                            background: isCurrent ? 'rgba(22,118,92,0.06)' : 'rgba(255,255,255,0.8)',
                             cursor: enteringOrg === null ? 'pointer' : 'wait',
                             boxShadow: '0 4px 16px rgba(10,25,41,0.06)',
                           }}
@@ -641,11 +684,11 @@ export default function Login() {
                               width: 42,
                               height: 42,
                               borderRadius: 12,
-                              background: 'linear-gradient(135deg,rgba(22,104,220,0.12),rgba(54,207,201,0.14))',
+                              background: 'linear-gradient(135deg,rgba(22,118,92,0.13),rgba(255,181,71,0.16))',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              color: '#1668dc',
+                              color: '#16765c',
                               fontSize: 19,
                             }}
                           >
@@ -665,7 +708,7 @@ export default function Login() {
                             </Tag>
                           )}
                           {enteringOrg === org.id && (
-                            <span style={{ color: '#1668dc', fontSize: 13 }}>{t('login.entering')}</span>
+                            <span style={{ color: '#16765c', fontSize: 13 }}>{t('login.entering')}</span>
                           )}
                         </motion.div>
                       )

@@ -1,6 +1,5 @@
 package com.mes.system.controller;
 
-import com.mes.common.exception.BusinessException;
 import com.mes.common.result.PageResult;
 import com.mes.common.result.Result;
 import com.mes.system.annotation.OperLog;
@@ -13,12 +12,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,9 +24,9 @@ import java.util.List;
 import com.mes.framework.security.RequirePerm;
 
 /**
- * 用户管理接口（只读 + 分配角色）。
- * <p>主账号生命周期（建号/改密/离职/档案变更）由 auth-center 统一管控，本控制器不提供
- * 任何写档案接口；启停走应用级（PUT /integration/auth/users/{employeeNo}/status，
+ * 用户管理接口（身份只读 + 子系统授权）。
+ * <p>主账号的建号、离职和删除由 auth-center 统一管控；基础档案和密码通过
+ * integration 管理接口写回认证中心。启停走应用级（PUT /integration/auth/users/{employeeNo}/status，
  * 仅影响本系统登录，不动该用户在其他系统的权限）。
  * <p>
  * 出参一律 {@link UserVO}（永不包含 password 字段）；路径 id 为准，覆盖表单内 id。
@@ -59,11 +55,6 @@ public class SysUserController {
         return Result.ok(userService.getDetail(id));
     }
 
-    
-    
-    
-    
-    
     /** 分配角色（整体覆盖） */
     @Operation(summary = "分配角色")
     @OperLog(module = "用户管理", operation = "分配角色")

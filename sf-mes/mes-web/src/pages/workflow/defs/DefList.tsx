@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import dayjs from 'dayjs'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   App,
@@ -14,6 +15,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -32,6 +34,16 @@ import { listAllRoles, pageUsers, type SysRole, type SysUser } from '@/api/syste
 import { BIZ_TYPE_OPTIONS, BizTypeTag } from '@/pages/workflow/shared'
 
 const { Title } = Typography
+
+/** 单行省略文本：表格内保持一行，悬停查看完整内容。 */
+function EllipsisText({ value }: { value?: string | null }) {
+  const text = value || '-'
+  return (
+    <Tooltip title={value || undefined} placement="topLeft">
+      <span className="erp-table-ellipsis-text">{text}</span>
+    </Tooltip>
+  )
+}
 
 /** 节点表单值（Form.List 行） */
 type NodeFormValue = Omit<WfNode, 'approverName' | 'id' | 'createTime'>
@@ -149,9 +161,19 @@ export default function DefList() {
   }
 
   const columns: ColumnsType<WfDefinition> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '流程编码', dataIndex: 'flowCode', width: 150 },
-    { title: '流程名称', dataIndex: 'flowName', width: 180, ellipsis: true },
+    { title: 'ID', dataIndex: 'id', width: 120 },
+    {
+      title: '流程编码',
+      dataIndex: 'flowCode',
+      width: 250,
+      render: (value: string) => <EllipsisText value={value} />,
+    },
+    {
+      title: '流程名称',
+      dataIndex: 'flowName',
+      width: 260,
+      render: (value: string) => <EllipsisText value={value} />,
+    },
     { title: '适用单据', dataIndex: 'bizType', width: 120, render: (v) => <BizTypeTag bizType={v} /> },
     { title: '节点数', dataIndex: 'nodeCount', width: 85, render: (v) => v ?? '-' },
     {
@@ -167,14 +189,25 @@ export default function DefList() {
         />
       ),
     },
-    { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v) => v ?? '-' },
-    { title: '创建时间', dataIndex: 'createTime', width: 165 },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      width: 280,
+      render: (value?: string) => <EllipsisText value={value} />,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createTime',
+      width: 170,
+      render: (value?: string) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '-'),
+    },
     {
       title: '操作',
       key: 'action',
-      width: 130,
+      width: 140,
+      fixed: 'right',
       render: (_, record) => (
-        <Space size={4}>
+        <Space size={8} wrap={false}>
           <Button type="link" size="small" onClick={() => openEdit(record)}>
             编辑
           </Button>
@@ -200,7 +233,7 @@ export default function DefList() {
         流程定义
       </Title>
 
-      <Card>
+      <Card className="mes-content-card">
         <Space style={{ marginBottom: 16 }}>
           <Input.Search
             placeholder="编码 / 名称模糊搜索"
@@ -217,10 +250,13 @@ export default function DefList() {
         </Space>
 
         <Table<WfDefinition>
+          className="mes-data-table"
           rowKey="id"
           columns={columns}
           dataSource={data?.records ?? []}
           loading={isLoading || isFetching}
+          tableLayout="fixed"
+          scroll={{ x: 1525 }}
           pagination={{
             total: data?.total ?? 0,
             current: data?.pageNum ?? pageNum,

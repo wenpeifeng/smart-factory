@@ -29,8 +29,10 @@
 
 ## 2. auth-center 用户同步（对账式）
 - 契约：`AuthCenterClient.fetchUsers(since)/disableUser/enableUser`（stub 默认）；
-- `AuthUserSyncService.sync()`：按 username 对账 upsert `sys_user`——新用户建档（随机初始口令 BCrypt 占位，登录走 SSO；dataScope=SELF），变更更新四要素，`active=false` 置 status=0（软删除副本，主账号生命周期只在 auth-center）；
-- 手动触发：`POST /integration/auth/sync`（`integration:authsync:run`）。正式运行由 sf-auth 侧定时/回调驱动。
+- `AuthUserSyncService.sync()`：按工号 `employeeNo` 对账 upsert `sys_user`——新用户建档（随机初始口令 BCrypt 占位，登录走 SSO；dataScope=SELF），同步姓名、岗位、联系方式、入职/离职日期和中心建档时间，`active=false` 置 status=0（软禁用副本，主账号生命周期只在 auth-center）；
+- `AuthUserSyncJob` 在应用启动后立即执行一次，随后默认每 60 秒自动全量对账；用户管理页不展示同步按钮。`POST /integration/auth/sync` 只作为运维兜底。
+- MES 用户管理默认按入职日期倒序、离职员工置底，支持姓名/工号/账号/岗位、应用状态、在职状态、来源和入职日期筛选及表头排序；子系统管理员不新增或删除员工，只维护 MES 角色、数据范围、基础档案、密码和应用级启停。
+- 中心分配、离职、全局停用、应用启停和移除会生成站内消息，在右上角按“集团通知/本系统操作”展示操作时间、员工、工号、入职日期、岗位和联系方式；应用级禁用后已有 JWT 在下一次请求立即失效。
 
 ## 3. OIDC 客户端（授权码 + PKCE，SF 仓库契约）
 - `GET /integration/oidc/authorize-url`：生成 state + code_verifier（Redis `mes:oidc:state:{state}`，10 分钟一次性，防 CSRF/重放），返回 auth-center `/oauth2/authorize` 完整跳转 URL（S256）；
@@ -39,9 +41,10 @@
 
 ## 3.5 真实对接 sf-auth（mode=http，已完成）
 - **用户同步**：`AuthCenterClientHttpImpl`（client_credentials 换 service token，Redis 缓存至到期前 60s）→ `GET /service/apps/mes-web/users` 对账式落库；匹配键=工号 employeeNo（本地 sys_user.username）；mes.admin → 本地超管角色映射（增删对账）；active=false → status=0。
-- **OIDC 登录**：authorize-url 指向 auth-web 统一登录页（5174）；回调后 `POST /integration/oidc/login`（白名单）= 授权码+PKCE 换令牌 → JWKS(RS256,kid) 验签（aud 强校验；iss 当前 auth 实现未携带，缺失跳过）→ 工号匹配本地用户 → `AuthService.buildSession` 签发 MES 会话；state 一次性防重放。
+- **OIDC 登录（主入口）**：MES 登录页直接提交企业账号到 `POST /integration/oidc/password-login`；MES 后端作为可信 BFF 调用认证中心登录、授权接口并在服务端完成授权码+PKCE 换令牌，浏览器不跳出 MES。随后 JWKS(RS256,kid) 验签（aud 强校验；iss 缺失时跳过、存在则校验）→ 工号匹配本地用户 → `AuthService.buildSession` 签发 MES 会话，并注销临时认证中心管理会话。
+- **标准跳转兼容**：`authorize-url` + `POST /integration/oidc/login` 仍保留，供外部标准 OIDC 场景或协议联调使用；state 一次性防重放。
 - **应用注册**：auth_db.app_client 中 mes-web 的 redirect_uri 须为 `http://localhost:5173/sso/callback`（SPA 回调）。
-- **前端**：登录页"统一认证登录(SSO)"按钮 + `/sso/callback` 公开回调页（换会话后进工作台）。
+- **前端**：登录页保持 MES 原生账号/密码交互，统一认证和应用权限校验对用户无感；仅保留弱化的本地应急管理员入口。
 - **联调注意**：①角色权限 Redis 缓存 10 分钟；②已应用迁移脚本修改后需手工修 flyway checksum（dev）。
 
 ## 4. 配置（application.yml `mes.integration.*`）

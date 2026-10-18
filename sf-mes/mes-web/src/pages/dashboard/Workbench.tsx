@@ -16,7 +16,7 @@ import {
  */
 export default function Workbench() {
   return (
-    <div style={{ padding: 24 }}>
+    <div>
       <Typography.Title level={4} style={{ marginTop: 0 }}>
         车间工作台
       </Typography.Title>

@@ -219,6 +219,7 @@ public class OidcAuthorizeService {
 
     private List<String> userRoles(String clientId, Long userId) {
         AssignVO assign = assignService.checkLoginAccess(clientId, userId);
-        return assign != null && assign.getRoles() != null ? assign.getRoles() : List.of();
+        if (assign == null) throw new BusinessException("用户已离职、停用或未获应用访问权限");
+        return assign.getRoles() != null ? assign.getRoles() : List.of();
     }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   App,
@@ -76,6 +76,8 @@ export default function MenuList() {
   const { message } = App.useApp()
 
   const [keyword, setKeyword] = useState('')
+  const [pageNum, setPageNum] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [editing, setEditing] = useState<SysMenu | null>(null)
   const [parentOf, setParentOf] = useState<SysMenu | null>(null) // 新增子节点时的父节点
   const [open, setOpen] = useState(false)
@@ -84,7 +86,17 @@ export default function MenuList() {
   const { data: tree, isLoading, isFetching } = useQuery({
     queryKey: ['system', 'menus', 'tree', keyword],
     queryFn: () => getMenuTree(keyword || undefined),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
   })
+
+  const rows = flatten(tree ?? [])
+  const lastPage = Math.max(1, Math.ceil(rows.length / pageSize))
+  const pageRows = rows.slice((pageNum - 1) * pageSize, pageNum * pageSize)
+
+  useEffect(() => {
+    if (!isLoading && pageNum > lastPage) setPageNum(lastPage)
+  }, [isLoading, lastPage, pageNum])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['system', 'menus'] })
 
@@ -219,7 +231,7 @@ export default function MenuList() {
             placeholder="名称 / 权限标识搜索（自动保留祖先链）"
             style={{ width: 280 }}
             allowClear
-            onSearch={setKeyword}
+            onSearch={(value) => { setPageNum(1); setKeyword(value) }}
           />
           <Button type="primary" onClick={() => openCreate(null)}>
             新增目录/菜单
@@ -229,10 +241,19 @@ export default function MenuList() {
         <Table<MenuRow>
           rowKey="id"
           columns={columns}
-          dataSource={flatten(tree ?? [])}
-          loading={isLoading || isFetching}
-          pagination={false}
+          dataSource={pageRows}
+          loading={{ spinning: isLoading || isFetching, tip: '正在加载菜单结构…' }}
+          pagination={{
+            current: pageNum,
+            pageSize,
+            total: rows.length,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50],
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, size) => { setPageNum(page); setPageSize(size) },
+          }}
           size="middle"
+          scroll={{ x: 1250 }}
         />
       </Card>
 

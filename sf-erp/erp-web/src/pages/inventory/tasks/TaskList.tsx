@@ -1,4 +1,5 @@
 import HasPerm from '@/components/HasPerm'
+import { formatDateTime } from '@/utils/date'
 import StatusTag from '@/components/StatusTag'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -226,7 +227,7 @@ export default function TaskList() {
       width: 90,
       render: (v: number) => <StatusTag value={TASK_STATUS_MAP[v] ?? v} />,
     },
-    { title: '完成时间', dataIndex: 'finishTime', width: 160, render: (v: string | null) => v ?? '-' },
+    { title: '完成时间', dataIndex: 'finishTime', width: 180, render: formatDateTime },
     {
       title: '操作',
       key: 'actions',
@@ -414,6 +415,7 @@ export default function TaskList() {
         </Space>
 
         <Table<WmsTaskRow>
+          className="erp-nowrap-table"
           rowKey="id"
           size="small"
           columns={columns}

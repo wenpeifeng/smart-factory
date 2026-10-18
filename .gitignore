@@ -11,6 +11,12 @@
 **/*.log
 script/logs/
 
+# 前端审计日志页面是源码，不属于运行日志目录
+!sf-erp/erp-web/src/pages/system/logs/
+!sf-erp/erp-web/src/pages/system/logs/**
+!sf-mes/mes-web/src/pages/system/logs/
+!sf-mes/mes-web/src/pages/system/logs/**
+
 # IDE / 系统
 .idea/
 .vscode/

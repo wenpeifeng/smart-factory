@@ -58,6 +58,7 @@ export const MSG_TYPE_MAP: Record<WfMessage['msgType'], { text: string; color: s
   APPROVE: { text: '通过', color: 'success' },
   REJECT: { text: '驳回', color: 'error' },
   WARN: { text: '预警', color: 'warning' },
+  IDENTITY: { text: '人员变动', color: 'cyan' },
 }
 
 /** 消息类型标签 */

@@ -1,4 +1,5 @@
 import HasPerm from '@/components/HasPerm'
+import TableEllipsisText from '@/components/TableEllipsisText'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -180,12 +181,9 @@ export default function InspectList() {
     {
       title: '来源',
       dataIndex: 'sourceType',
-      width: 90,
+      width: 240,
       render: (v, record) => (
-        <Space size={4}>
-          <span>{bizTypeText(v)}</span>
-          {record.sourceNo ? <Text type="secondary">{record.sourceNo}</Text> : null}
-        </Space>
+        <TableEllipsisText value={`${bizTypeText(v)}${record.sourceNo ? ` ${record.sourceNo}` : ''}`} />
       ),
     },
     {
@@ -396,11 +394,13 @@ export default function InspectList() {
         </Space>
 
         <Table<QcInspectRow>
+          className="erp-nowrap-table"
           rowKey="id"
+          tableLayout="fixed"
           columns={columns}
           dataSource={data?.records ?? []}
           loading={isLoading || isFetching}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1600 }}
           pagination={{
             total: data?.total ?? 0,
             current: data?.pageNum ?? params.pageNum,

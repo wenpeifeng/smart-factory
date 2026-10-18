@@ -32,7 +32,7 @@ public interface StatsMapper {
     @Select("""
             SELECT inspect_type inspectType, SUM(sample_qty) sampleQty,
                    SUM(qualified_qty) qualifiedQty, SUM(unqualified_qty) unqualifiedQty
-            FROM qc_inspect WHERE deleted = 0 AND status = 1
+            FROM qc_inspect WHERE deleted = 0 AND status = 10
             GROUP BY inspect_type
             """)
     List<Map<String, Object>> qualitySummary();
@@ -81,7 +81,7 @@ public interface StatsMapper {
                    SUM(i.sample_qty) sampleQty, SUM(i.qualified_qty) qualifiedQty,
                    SUM(i.unqualified_qty) unqualifiedQty
             FROM qc_inspect i LEFT JOIN base_material m ON m.id = i.material_id
-            WHERE i.deleted = 0 AND i.status = 1
+            WHERE i.deleted = 0 AND i.status = 10
             GROUP BY i.material_id, m.code, m.name ORDER BY sampleQty DESC LIMIT 10000
             """)
     List<Map<String, Object>> qualityByMaterial();

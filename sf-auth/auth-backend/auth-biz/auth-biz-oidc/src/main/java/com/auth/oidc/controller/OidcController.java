@@ -49,6 +49,8 @@ public class OidcController {
     private final OidcTokenService tokenService;
     private final AppClientService clientService;
     private final IdmUserMapper userMapper;
+    private final com.auth.app.service.AppAssignService assignService;
+    private final com.auth.system.security.JwtTokenProvider sessions;
 
     /** 签发者标识（写入 iss claim 与发现文档） */
     @Value("${auth.oidc.issuer:http://localhost:8082/api}")
@@ -225,6 +227,12 @@ public class OidcController {
         }
         if (tokenService.isRevoked(claims.getId())) {
             throw new BusinessException("令牌已登出失效");
+        }
+        Long userId = Long.valueOf(claims.getSubject());
+        String clientId = claims.getAudience().iterator().next();
+        if (!sessions.isAppSessionActive(userId, clientId, authorization.substring(7).trim())
+                || assignService.checkLoginAccess(clientId, userId) == null) {
+            throw new BusinessException("应用访问已失效，请重新登录");
         }
         return claims;
     }

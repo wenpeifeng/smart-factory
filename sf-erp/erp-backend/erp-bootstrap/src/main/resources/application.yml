@@ -87,9 +87,11 @@ auth:
     authorize-page-url: http://localhost:5174/oauth/authorize
     client-id: erp-web
     client-secret: demo-secret
-    redirect-uri: http://localhost:5173/sso/callback
+    # 授权码必须回跳到 ERP 前端的 SSO 页面，不是 MES 前端或 ERP 后端端口
+    redirect-uri: http://localhost:5172/sso/callback
     sync-enabled: true
-    sync-cron: "0 0 * * * ?"
+    sync-cron: "0 * * * * ?"
+    sync-callback-token: ${IDENTITY_SYNC_TOKEN:identity-sync-token}
 
 # ================= ERP-MES 集成（V1231，erp-biz-integration） =================
 # 契约：sf-mes/docs/MES与ERP协同设计.md。MES 未就绪时 mode=stub（默认）仅记日志即成功。

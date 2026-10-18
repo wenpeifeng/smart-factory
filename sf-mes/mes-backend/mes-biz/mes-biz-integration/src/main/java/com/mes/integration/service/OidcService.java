@@ -1,6 +1,7 @@
 package com.mes.integration.service;
 
 import com.mes.integration.oidc.OidcAuthorizeVO;
+import com.mes.integration.oidc.OidcPasswordLoginForm;
 import com.mes.integration.oidc.OidcTokenVO;
 
 /**
@@ -17,6 +18,14 @@ public interface OidcService {
      * @return 授权 URL 与 state
      */
     OidcAuthorizeVO buildAuthorizeUrl();
+
+    /**
+     * 在 MES 登录页直接使用认证中心账号登录，服务端无感完成 OIDC 授权码流程。
+     *
+     * @param form 企业账号与口令
+     * @return MES 本地登录会话
+     */
+    com.mes.system.dto.auth.LoginVO loginByPassword(OidcPasswordLoginForm form);
 
     /**
      * 授权码换令牌。

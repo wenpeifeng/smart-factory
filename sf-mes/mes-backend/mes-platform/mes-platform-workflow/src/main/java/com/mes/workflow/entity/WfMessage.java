@@ -23,6 +23,8 @@ public class WfMessage extends BaseEntity {
     public static final String TYPE_REJECT = "REJECT";
     /** 类型：预警 */
     public static final String TYPE_WARN = "WARN";
+    /** 认证中心人员变更。 */
+    public static final String TYPE_IDENTITY = "IDENTITY";
 
     /** 未读标志：未读 */
     public static final int UNREAD = 0;

@@ -39,15 +39,9 @@ export function switchOrg(orgId: number) {
   return get<AuthResp>(`/auth/switch-org/${orgId}`)
 }
 
-/** GET /auth/sso/authorize 响应：统一登录页跳转 URL + state */
-export interface SsoAuthorizeResp {
-  authorizeUrl: string
-  state: string
-}
-
-/** 发起统一登录：取跳转 URL（含 state + PKCE，后端 Redis 暂存 5 分钟） */
-export function ssoAuthorize() {
-  return get<SsoAuthorizeResp>('/auth/sso/authorize')
+/** 子系统原生企业账号登录：后端无感完成认证中心 OIDC 授权码流程 */
+export function ssoPasswordLogin(body: { username: string; password: string }) {
+  return post<AuthResp>('/auth/sso/password-login', body)
 }
 
 /** SSO 回调：授权码换本地 ERP 会话（返回结构与 /auth/login 同构） */
@@ -64,5 +58,22 @@ export function ssoSyncUsers() {
 /** 应用级启停用户（调认证中心，仅影响本系统；无工号账号本地启停） */
 export function ssoAppStatus(userId: number, enabled: boolean) {
   return put<void>(`/auth/sso/users/${userId}/app-status`, { enabled })
+}
+
+export interface EmployeeProfileForm {
+  realName: string
+  position?: string
+  email?: string
+  phone?: string
+}
+
+/** 子系统管理员维护基础档案，后端受控回写认证中心。 */
+export function ssoUpdateProfile(userId: number, body: EmployeeProfileForm) {
+  return put<void>(`/auth/sso/users/${userId}/profile`, body)
+}
+
+/** 子系统管理员重置统一账号密码。 */
+export function ssoResetPassword(userId: number, password: string) {
+  return put<void>(`/auth/sso/users/${userId}/password`, { password })
 }
 

@@ -83,7 +83,8 @@ public class SecurityConfig {
                 // OIDC 认证中心回调（授权码换令牌，state 防 CSRF）
                 "/sso/callback",
                 // SSO 登录入口（登录前调用：取授权页地址 / 授权码换本系统会话）
-                "/integration/oidc/authorize-url", "/integration/oidc/login",
+                "/integration/oidc/authorize-url", "/integration/oidc/login", "/integration/oidc/password-login",
+                "/integration/auth/internal/sync",
                 // ERP 集成入站（ErpInboundController 自带 X-Integration-Token 校验）
                 "/integration/erp/**"
         };

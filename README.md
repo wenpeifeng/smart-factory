@@ -54,7 +54,13 @@ smart-factory/
 ### 一键启动
 
 ```bash
+cd smart-factory
 ./script/start-all.sh     # 重启语义：先自动停止旧进程，再依次启动 sf-auth → sf-erp → sf-mes
+./script/stop-all.sh      # 一键停止（数据库容器保留；--with-db 连容器一起停）
+```
+
+### 一键停止
+```bash
 ./script/stop-all.sh      # 一键停止（数据库容器保留；--with-db 连容器一起停）
 ```
 
@@ -66,9 +72,21 @@ cd sf-mes  && ./script/sh/start-all.sh
 cd sf-auth && ./script/sh/start-all.sh
 ```
 
-> 基础设施容器由各项目 `script/sh/env-init.sh`（docker run）管理，运行中/已停止/不存在三种状态都会自动处理；不要手动执行 `docker compose up`，会与已存在的同名容器冲突。docker-compose.yml 仅作全新环境的兜底创建方式。
+> 顶层 `script/start-all.sh` 会在 macOS 上自动启动已安装的 Docker Desktop，并等待 daemon 就绪后再停止和重启应用。基础设施容器由各项目 `script/sh/env-init.sh`（docker run）管理，运行中/已停止/不存在三种状态都会自动处理；不要手动执行 `docker compose up`，会与已存在的同名容器冲突。docker-compose.yml 仅作全新环境的兜底创建方式。
+
+> **首次启动数据保证**：所有演示数据都由版本化 Flyway 迁移随源码交付。人员、应用分配和系统管理员标签只在 `sf-auth/script/sql/migration` 定义；ERP/MES 启动时从认证中心自动重建本地授权副本，顶层启动脚本返回前还会强制收敛一次。ERP 业务演示数据由 `V1201__demo_data.sql` 初始化，MES 全链路演示数据由 `V1203__mes_business_demo_data.sql` 和 `V1204__demo_data_consistency_fix.sql` 初始化。因此其他人 clone GitHub 项目并对空数据库首次启动时，看到的是同一套可复现数据，不依赖某台电脑的本地数据库副本。
+
+> **运行期实时一致性**：在认证中心、ERP 管理端或 MES 管理端修改人员档案、启停、应用分配或管理员标签后，认证中心会在数据库事务提交后立即通知相关子系统做幂等对账。若某子系统暂时离线，其每分钟全量对账会自动补齐，认证中心始终是人员唯一事实源。
 
 > 说明：三系统独立部署。sf-auth 不可用时，ERP/MES 各自保留本地账号直登降级；ERP 与 MES 未互通时，MES 以集成契约 stub 自行运行演示。
+
+### 推荐体验顺序：
+1. 进入认证中心创建员工，分配 ERP/MES 应用访问权。
+2. 从 ERP/MES 登录页走统一认证。
+3. 在 ERP 建物料、BOM、工艺路线和生产订单。
+4. 将订单下推 MES。
+5. 在 MES 完成下达、派工、过站报工、领料和质检。
+6. 回 ERP 检查生产进度、入库及成本回传。
 
 ## 访问入口与演示账号
 
@@ -76,11 +94,12 @@ cd sf-auth && ./script/sh/start-all.sh
 
 | 系统 | 页面访问地址（前端） | 后端 API | 演示账号 | 说明 |
 |---|---|---|---|---|
-| sf-auth 管理端 | http://localhost:5174 | http://localhost:8082/api | admin / 123456（种子超管，生产环境首登后必须改密） | 建人、管应用分配 |
-| sf-erp 业务门户 | http://localhost:5172 | http://localhost:8080/api | erp_admin / 123456（另 8 个演示角色账号见其 README，密码 Admin@123） | 经营管理门户 |
-| sf-mes 车间工作台 | http://localhost:5173 | http://localhost:8081/api | mes_admin / 123456 | 车间工作台 + 管理端 + 移动端 |
+| sf-auth 管理端 | http://localhost:5174 | http://localhost:8082/api | `admin / 123456`（只读种子超管，仅演示） | 建人、管应用分配；也可统一登录 ERP/MES |
+| sf-erp 业务门户 | http://localhost:5172 | http://localhost:8080/api | `E3003 / 123456`（ERP 管理员） | 正式入口选“统一认证登录” |
+| sf-mes 车间工作台 | http://localhost:5173 | http://localhost:8081/api | `E3002 / 123456`（MES 管理员） | 正式入口选“统一认证登录” |
 
-> 三系统管理员账号已统一规范：`admin`（认证中心）/ `erp_admin`（ERP）/ `mes_admin`（MES），密码统一 `123456`。三系统独立数据库，账号互不影响。
+> `E3001` ~ `E3006` 是只读种子账号；`E3101` ~ `E3105` 是可维护的入职员工账号，密码均为 `123456`。应用分配矩阵见 [sf-auth/README.md](sf-auth/README.md)。
+> `erp_admin / 123456` 与 `mes_admin / 123456` 仅为认证中心故障时的本地应急账号，不参与正常的入职、应用分配与离职回收链路。
 
 ## 端口与资源占用总览
 

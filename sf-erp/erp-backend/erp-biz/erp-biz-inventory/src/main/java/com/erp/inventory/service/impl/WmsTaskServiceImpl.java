@@ -423,8 +423,8 @@ public class WmsTaskServiceImpl implements WmsTaskService {
         }
         // 2) 库存准确率：1 - 差异行/盘点行（窗口内完成的盘点单）
         Map<String, Object> acc = checkMapper.selectKpiAccuracy(beginTime, endTime);
-        Long diffRows = acc == null ? 0L : l(acc.get("diff_rows"));
-        Long checkRows = acc == null ? 0L : l(acc.get("check_rows"));
+        long diffRows = acc == null ? 0L : longOrZero(acc.get("diff_rows"));
+        long checkRows = acc == null ? 0L : longOrZero(acc.get("check_rows"));
         vo.setStockAccuracy(checkRows == 0 ? null
                 : BigDecimal.ONE.subtract(BigDecimal.valueOf(diffRows)
                         .divide(BigDecimal.valueOf(checkRows), 4, RoundingMode.HALF_UP)));
@@ -438,8 +438,9 @@ public class WmsTaskServiceImpl implements WmsTaskService {
         List<WmsKpiVO.StatusCount> list = new ArrayList<>();
         for (Map<String, Object> row : board) {
             WmsKpiVO.StatusCount sc = new WmsKpiVO.StatusCount();
-            sc.setStatus((Integer) row.get("status"));
-            sc.setCnt(l(row.get("cnt")));
+            Object status = row.get("status");
+            sc.setStatus(status instanceof Number n ? n.intValue() : Integer.valueOf(status.toString()));
+            sc.setCnt(longOrZero(row.get("cnt")));
             list.add(sc);
         }
         return list;
@@ -467,6 +468,12 @@ public class WmsTaskServiceImpl implements WmsTaskService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** SQL SUM/AVG 在空集合时会返回 null，KPI 计数按 0 处理。 */
+    private static long longOrZero(Object v) {
+        Long value = l(v);
+        return value == null ? 0L : value;
     }
 
     private static BigDecimal bd(Object v) {

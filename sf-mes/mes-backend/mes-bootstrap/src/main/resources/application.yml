@@ -88,3 +88,4 @@ mes:
       client-secret: demo-secret
       redirect-uri: http://localhost:5173/sso/callback
       service-token: auth-center-sync-token
+      sync-callback-token: ${IDENTITY_SYNC_TOKEN:identity-sync-token}

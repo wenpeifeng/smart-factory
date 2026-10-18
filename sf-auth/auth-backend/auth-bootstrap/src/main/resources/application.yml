@@ -33,6 +33,16 @@ spring:
     # 并行开发场景：脚本版本号落盘顺序与提交顺序可能不一致，允许补执行历史间隙
     out-of-order: true
 
+# 认证中心是人员唯一事实源：主档/分配/角色标签提交后立即推送子系统对账。
+# 回调失败时不回滚人事操作，ERP/MES 每分钟全量对账作为兜底。
+identity:
+  sync:
+    enabled: true
+    callback-token: ${IDENTITY_SYNC_TOKEN:identity-sync-token}
+    targets:
+      erp-web: http://localhost:8080/api/auth/sso/internal/sync
+      mes-web: http://localhost:8081/api/integration/auth/internal/sync
+
 mybatis-plus:
   configuration:
     # 下划线列名自动映射驼峰属性（sys_user_name -> sysUserName）

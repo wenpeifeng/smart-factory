@@ -14,7 +14,14 @@ public interface AuthUserSyncService {
      *
      * @return 同步结果报告
      */
-    UserSyncResultVO sync();
+    default UserSyncResultVO sync() {
+        return sync("GROUP");
+    }
+
+    /**
+     * @param source GROUP=认证中心/集团操作，LOCAL=本 MES 管理端回写后对账
+     */
+    UserSyncResultVO sync(String source);
 
     /**
      * 单用户建档/刷新（JIT 登录复用）：按工号 upsert + mes.admin 角色映射。

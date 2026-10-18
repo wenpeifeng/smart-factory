@@ -3,6 +3,8 @@ package com.mes.integration.authcenter.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -23,6 +25,14 @@ public class AuthCenterUserDTO {
     private String orgName;
     /** 岗位 */
     private String position;
+    private String email;
+    private String phone;
+    private String accountSource;
+    private Boolean immutable;
+    private Integer identityStatus;
+    private LocalDate entryDate;
+    private LocalDate leaveDate;
+    private LocalDateTime identityCreateTime;
     /** 在职且有权进入本应用 */
     private Boolean active;
     /** 失效原因：LEFT / SUSPENDED / APP_DISABLED */
@@ -30,5 +40,5 @@ public class AuthCenterUserDTO {
     /** 角色标签（如 mes.admin = 本系统超管） */
     private List<String> roles;
     /** 最近变更时间（增量同步水位） */
-    private String updateTime;
+    private LocalDateTime updateTime;
 }

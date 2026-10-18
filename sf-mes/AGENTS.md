@@ -52,7 +52,7 @@ Flyway 版本段：system V1x、workflow V9x、basedata V10x、plan V20x、execu
 - 端口：mes-mysql 3307 / mes-redis 6380 / 后端 8081 / 前端 5173；3306/6379/8080 被 erp 同名服务占用，且宿主上跑着一个 erp-backend 进程属正常现象，别误杀也别重用端口
 - docker-compose 用镜像 `mysql:8` 实际是 8.4；首次初始化有秒级窗口 root@'%' 未就绪，若启动报 `Access denied for root@192.168.65.1`，执行 `docker exec mes-mysql mysql -uroot -pmes123456 -e "ALTER USER 'root'@'%' IDENTIFIED BY 'mes123456'; FLUSH PRIVILEGES;"` 后重启后端
 - 启动：`./script/sh/start-all.sh`（全量）/ `--backend-only` / `--web-only`；停止：`./script/sh/stop-all.sh`（`--with-db` 连容器一起停）。会话结束时已停后端进程、保留 mes-mysql/mes-redis 容器与数据
-- 登录账号 mes_admin/123456（套件统一账号规范：auth=admin、erp=erp_admin、mes=mes_admin，密码统一 123456；ERP 演示角色账号是 Admin@123，别混）
+- 登录账号 mes_admin/123456（套件统一账号规范：auth=admin、erp=erp_admin、mes=mes_admin，所有本地演示账号密码也统一为 123456）
 
 **本会话（P2 执行核心）完成**：
 - integration：ERP 六类接口契约+stub（ErpClient/AuthCenterClient/OidcService，mode=stub 默认）+ 回传推送日志 int_push_log（V801，幂等+5分钟重试+对账页 /integration/push-logs）+ 入站下推落地（订单→建单、物料/BOM/工艺路线→主数据，X-Integration-Token 鉴权）+ auth-center 用户对账同步 + OIDC 授权码+PKCE（/sso/callback 已入白名单）；docs/modules/integration.md
@@ -82,7 +82,7 @@ Flyway 版本段：system V1x、workflow V9x、basedata V10x、plan V20x、execu
 - 车间电子看板大屏 /kanban/screen（深色电视墙，30 秒轮询：安灯/产量/进度榜/WIP/质量）
 - 管理驾驶舱 /cockpit（指标卡+趋势+状态分布+合格率，60 秒轮询）
 - 报表中心三页（/report/*，CSV 导出）
-- demo-data（V1201）：演示角色 demo_operator/demo_qc/demo_wh + 演示账号 operator/qc/wh（密码 demo123456），已验证权限边界（operator 可报工、访问驾驶舱 403）
+- demo-data（V1201）：演示角色 demo_operator/demo_qc/demo_wh + 演示账号 operator/qc/wh（密码 123456），已验证权限边界（operator 可报工、访问驾驶舱 403）
 - 修复：V19 驾驶舱菜单误建为目录（type=1 权限码不生效，改 type=2）
 - 数据库答疑：三系统三库已就绪（mes_db@mes-mysql:3307 / erp_db@erp-mysql:3306 / auth_db@auth-mysql:13306），MES 自有完整 RBAC 表（sys_user/role/menu/role_menu/user_role，104+ 菜单），auth-center 只管身份与进门权；docs/modules/p4-presentation.md
 - 端到端验收全过：mvn package/npm build/start-all/Flyway V19+V1201/登录/大屏与驾驶舱聚合数据/演示账号权限边界
@@ -93,7 +93,7 @@ Flyway 版本段：system V1x、workflow V9x、basedata V10x、plan V20x、execu
 - 前端：登录页"统一认证登录(SSO)"按钮 + /sso/callback 公开回调页
 - 集成测试：script/sh/integration-test.sh（19 项断言：本地登录/权限边界/用户同步/SSO 全链路含重放拒绝/ERP 下推幂等/下达派工过站回传/质检/安灯，全过）+ PkceUtilTest（3 用例，RFC 7636 官方向量）
 - 联调坑：①auth 种子把 mes-web 回调注册成了 8081，已改 5173（auth_db.app_client）；②已应用迁移脚本改内容会 Flyway checksum 报错（dev 手工 UPDATE flyway_schema_history）；③spring-boot-starter-test 父 pom dependencyManagement 需显式版本
-- 默认登录方式：SSO（admin/123456 走 5174 统一登录）或本地降级（mes_admin/123456，套件统一账号规范；演示账号 operator/qc/wh=demo123456）
+- 默认登录方式：SSO（admin/123456 走 5174 统一登录）或本地降级（mes_admin/123456，套件统一账号规范；演示账号 operator/qc/wh=123456）
 
 **本会话（身份体系收敛 + ERP 双向 http + 建模修正）完成**：
 - **用户体系入口收敛（决策 2 落地）**：MES 端用户新增/修改/删除/重置密码/本地启停接口**已物理删除**（controller/service/api/ts 全链路移除，HTTP 404/405）；SysUserServiceImpl 重写为只读+角色分配；用户管理页改为「同步认证中心用户 + 应用级启停（调中心，仅在职可用）+ 分配角色」；V20 删除增删改密按钮权限

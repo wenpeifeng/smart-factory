@@ -30,4 +30,14 @@ public class AuthCenterClientStub implements AuthCenterClient {
     public void enableUser(String employeeNo) {
         log.info("[AUTH-STUB] 应用级启用用户: {}", employeeNo);
     }
+
+    @Override
+    public void updateProfile(String employeeNo, ProfileForm form) {
+        log.info("[AUTH-STUB] 更新用户档案: {}", employeeNo);
+    }
+
+    @Override
+    public void resetPassword(String employeeNo, String password) {
+        log.info("[AUTH-STUB] 重置用户密码: {}", employeeNo);
+    }
 }

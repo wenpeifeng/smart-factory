@@ -31,6 +31,6 @@ public interface AuthCenterUserMapper extends BaseMapper<SysUser> {
      * 中心全量列表之外的这些用户 = 已被回收分配（或中心侧删除），应本地禁用。
      */
     @InterceptorIgnore(tenantLine = "true")
-    @Select("SELECT * FROM sys_user WHERE employee_no IS NOT NULL AND employee_no != '' AND deleted = 0")
+    @Select("SELECT * FROM sys_user WHERE auth_assigned = 1 AND employee_no IS NOT NULL AND employee_no != '' AND deleted = 0")
     java.util.List<SysUser> selectAllSyncedUsers();
 }

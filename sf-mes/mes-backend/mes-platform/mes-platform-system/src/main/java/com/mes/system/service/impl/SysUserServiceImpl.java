@@ -34,12 +34,12 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 用户管理服务实现（只读 + 角色分配）。
- * <p>主账号生命周期（建号/改密/离职/档案变更/启停）由 auth-center 统一管控：
+ * 用户管理服务实现（认证中心身份副本 + MES 授权）。
+ * <p>主账号生命周期（建号/离职/删除）由 auth-center 统一管控：
  * 本系统用户来自同步副本（employee_no 工号匹配，见 integration 模块三层同步），
  * 应用级启停走 PUT /integration/auth/users/{employeeNo}/status（仅影响本系统登录，
- * 不动该用户在其他系统的权限）。历史上的 create/update/delete/resetPassword/updateStatus
- * 接口已按该边界决策移除。
+ * 不动该用户在其他系统的权限）。基础档案和密码变更由 integration 管理接口写回认证中心；
+ * 本服务只维护 MES 内部角色、组织和数据范围。
  */
 @Service
 @RequiredArgsConstructor
@@ -55,19 +55,38 @@ public class SysUserServiceImpl implements SysUserService {
     @Override
     public PageResult<UserVO> page(UserQuery query) {
         var wrapper = Wrappers.lambdaQuery(SysUser.class)
+                .eq(SysUser::getAuthAssigned, true)
                 .and(StringUtils.hasText(query.getKeyword()), w -> w
                         .like(SysUser::getUsername, query.getKeyword())
                         .or().like(SysUser::getEmployeeNo, query.getKeyword())
-                        .or().like(SysUser::getNickname, query.getKeyword()))
+                        .or().like(SysUser::getNickname, query.getKeyword())
+                        .or().like(SysUser::getPosition, query.getKeyword()))
                 .eq(query.getDeptId() != null, SysUser::getDeptId, query.getDeptId())
                 .eq(query.getStatus() != null, SysUser::getStatus, query.getStatus())
-                .orderByDesc(SysUser::getId);
+                .eq(query.getIdentityStatus() != null, SysUser::getIdentityStatus, query.getIdentityStatus())
+                .ge(query.getEntryDateStart() != null, SysUser::getEntryDate, query.getEntryDateStart())
+                .le(query.getEntryDateEnd() != null, SysUser::getEntryDate, query.getEntryDateEnd())
+                .last(userOrderBy(query));
         PageResult<UserVO> page = PageUtils.of(userMapper, wrapper,
                 query.getPageNum(), query.getPageSize(), UserVO::from);
         if (!page.getRecords().isEmpty()) {
             fillDeptAndRoles(page.getRecords());
         }
         return page;
+    }
+
+    /** 白名单排序：离职人员始终置底，避免与在职员工混排。 */
+    private String userOrderBy(UserQuery query) {
+        String column = switch (query.getSortField() == null ? "entryDate" : query.getSortField()) {
+            case "nickname" -> "nickname";
+            case "employeeNo" -> "employee_no";
+            case "identityCreateTime" -> "identity_create_time";
+            case "status" -> "status";
+            default -> "entry_date";
+        };
+        String direction = "asc".equalsIgnoreCase(query.getSortOrder()) ? "ASC" : "DESC";
+        return "ORDER BY CASE WHEN identity_status = 2 THEN 1 ELSE 0 END ASC, "
+                + column + " " + direction + ", id DESC";
     }
 
     @Override
@@ -81,7 +100,7 @@ public class SysUserServiceImpl implements SysUserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void assignRoles(Long id, List<Long> roleIds) {
-        requireUser(id);
+        requireAssignedUser(id);
         // 整体覆盖：物理清空后重建（避免逻辑删在 uk(user_id, role_id) 撞键堆积）
         userRoleMapper.delete(Wrappers.lambdaQuery(SysUserRole.class)
                 .eq(SysUserRole::getUserId, id));
@@ -104,13 +123,14 @@ public class SysUserServiceImpl implements SysUserService {
 
     @Override
     public List<Long> getUserOrgIds(Long id) {
+        requireAssignedUser(id);
         return userOrgMapper.selectOrgIdsByUserId(id);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void assignOrgs(Long id, List<Long> orgIds) {
-        requireUser(id);
+        requireAssignedUser(id);
         // 绑定维护为整体覆盖：物理删除后重建（XML 物理删除，防 uk 撞键）
         userOrgMapper.deletePhysicallyByUserId(id);
         if (orgIds == null || orgIds.isEmpty()) {
@@ -177,6 +197,14 @@ public class SysUserServiceImpl implements SysUserService {
         SysUser user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException(ErrorCode.DATA_NOT_EXISTS, "用户不存在: %d".formatted(id));
+        }
+        return user;
+    }
+
+    private SysUser requireAssignedUser(Long id) {
+        SysUser user = requireUser(id);
+        if (!Boolean.TRUE.equals(user.getAuthAssigned())) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "仅可管理认证中心已分配到本系统的员工");
         }
         return user;
     }

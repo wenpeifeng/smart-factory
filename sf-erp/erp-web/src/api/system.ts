@@ -7,9 +7,17 @@ export interface SysUser {
   id: number
   username: string
   employeeNo: string | null
+  identityImmutable: boolean
+  identityStatus: number | null
+  identityInactiveReason: string | null
+  entryDate: string | null
+  leaveDate: string | null
+  identityCreateTime: string | null
+  identityUpdateTime: string | null
   dataScope: string | null
   orgId: number | null
   nickname: string
+  position: string | null
   phone: string | null
   email: string | null
   deptId: number | null
@@ -217,6 +225,11 @@ export const pageUsers = (params: {
   keyword?: string
   deptId?: number
   status?: number
+  identityStatus?: number
+  entryDateStart?: string
+  entryDateEnd?: string
+  sortField?: string
+  sortOrder?: 'asc' | 'desc'
 }) => get<PageResult<SysUser>>('/system/users', params)
 
 /** GET /system/users/{id} 详情 */

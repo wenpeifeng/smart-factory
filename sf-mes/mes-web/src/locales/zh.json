@@ -5,30 +5,30 @@
   },
   "login": {
     "brand": {
-      "title": "ERP 集团管理系统",
-      "subtitle": "供应链 · 财务 · 生产制造一体化"
+      "title": "MES 制造执行系统",
+      "subtitle": "工单 · 报工 · 质量 · 追溯"
     },
     "values": [
       {
-        "title": "供应链全链路协同",
-        "desc": "采购、销售、库存单据实时穿透，业务数据一站直达"
+        "title": "生产现场，一屏协同",
+        "desc": "工单、派工、过站与在制状态实时衔接，让现场进度清晰可见"
       },
       {
-        "title": "财务业务一体化",
-        "desc": "业务单据自动生成凭证，月结效率提升 80%"
+        "title": "质量追溯贯穿制造",
+        "desc": "批次、序列号与检验记录沿生产链路完整关联"
       },
       {
-        "title": "多组织集团管控",
-        "desc": "租户隔离 + 五档数据权限，集团数据一盘棋"
+        "title": "设备与异常形成闭环",
+        "desc": "点检、安灯、维修和设备效率数据统一回到现场处置"
       }
     ],
     "metrics": {
-      "turnover": "库存周转率",
-      "delivery": "准时交付率",
-      "closing": "月结周期"
+      "wip": "在制执行",
+      "quality": "过程质量",
+      "equipment": "设备效率"
     },
-    "welcome": "欢迎回来",
-    "subtitle": "登录您的账户，开启高效工作",
+    "welcome": "登录 MES 系统",
+    "subtitle": "使用企业账号进入制造执行门户",
     "username": "账号",
     "usernamePlaceholder": "请输入账号",
     "usernameRequired": "请输入账号",
@@ -44,7 +44,15 @@
     "step2Subtitle": "您的账号归属多个组织，请选择本次要进入的组织",
     "entering": "进入中...",
     "backToStep1": "返回重新登录",
-    "currentOrg": "当前组织"
+    "currentOrg": "当前组织",
+    "ssoButton": "统一认证登录",
+    "ssoHint": "账号与权限由集团统一身份服务安全校验",
+    "emergencyEntry": "认证中心不可用？使用应急管理员登录",
+    "emergencyTitle": "应急管理员登录",
+    "emergencySubtitle": "使用本系统预置的应急管理员账号登录",
+    "emergencyHint": "仅限认证中心不可用时使用，仅授权系统管理员可登录。",
+    "emergencySubmit": "应急登录",
+    "backToSso": "返回企业账号登录"
   },
   "topbar": {
     "switchOrg": "切换组织",

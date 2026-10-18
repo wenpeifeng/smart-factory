@@ -4,7 +4,7 @@ import com.erp.system.authcenter.dto.UserSyncResultVO;
 
 /**
  * 认证中心用户同步服务（对账式，SCIM 风格）。
- * <p>定时（每小时）+ 手动触发；契约见 sf-auth docs/业务系统接入指南.md §3.2。
+ * <p>认证中心提交后实时回调 + 每分钟定时兜底 + 手动触发。
  */
 public interface AuthUserSyncService {
 
@@ -15,7 +15,14 @@ public interface AuthUserSyncService {
      *
      * @return 同步结果 {added,updated,disabled,orphanDisabled,total}
      */
-    UserSyncResultVO sync();
+    default UserSyncResultVO sync() {
+        return sync("GROUP");
+    }
+
+    /**
+     * @param source GROUP=认证中心/集团操作，LOCAL=本 ERP 管理端回写后对账
+     */
+    UserSyncResultVO sync(String source);
 
     /**
      * SSO 登录 JIT 建档：用户已通过认证中心登录（能拿到 code 即已进门），
@@ -38,4 +45,12 @@ public interface AuthUserSyncService {
      * @param enabled true=启用 false=禁用
      */
     void changeAppStatus(Long userId, boolean enabled);
+
+    /** 回写认证中心基础档案并刷新本地镜像。 */
+    void updateProfile(Long userId, ProfileForm form);
+
+    /** 重置统一账号密码。 */
+    void resetPassword(Long userId, String password);
+
+    record ProfileForm(String realName, String position, String email, String phone) { }
 }

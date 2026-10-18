@@ -109,7 +109,7 @@ export interface StartResult {
 export interface WfMessage {
   id: number
   receiverId: number
-  msgType: 'TODO' | 'APPROVE' | 'REJECT' | 'WARN'
+  msgType: 'TODO' | 'APPROVE' | 'REJECT' | 'WARN' | 'IDENTITY'
   title: string
   content: string | null
   bizPath: string | null

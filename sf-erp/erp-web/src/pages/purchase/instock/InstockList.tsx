@@ -31,6 +31,7 @@ import {
   type PurInstockSavePayload,
 } from '@/api/purchase'
 import { reverseDoc } from '@/api/basedata'
+import { formatDateTime } from '@/utils/date'
 import {
   DOC_STATUS_OPTIONS,
   DocStatusTag,
@@ -156,7 +157,7 @@ export default function InstockList() {
       render: (v: PurInstockRow['status']) =>
         Number(v) === 20 ? <Tag color="red">已红冲</Tag> : <DocStatusTag status={v} />,
     },
-    { title: '审核时间', dataIndex: 'auditTime', width: 165, render: (v: string | null) => v ?? '-' },
+    { title: '审核时间', dataIndex: 'auditTime', width: 180, render: formatDateTime },
     {
       title: '操作',
       key: 'actions',
@@ -253,11 +254,13 @@ export default function InstockList() {
         </Space>
 
         <Table<PurInstockRow>
+          className="erp-nowrap-table"
           rowKey="id"
           columns={columns}
           dataSource={data?.records ?? []}
           loading={isLoading || isFetching}
-          scroll={{ x: 1200 }}
+          tableLayout="fixed"
+          scroll={{ x: 1310 }}
           pagination={{
             total: data?.total ?? 0,
             current: data?.pageNum ?? 1,
@@ -315,7 +318,7 @@ function InstockDetailDrawer({ id, onClose }: { id: number; onClose: () => void 
             <Descriptions.Item label="价税合计">
               <Text strong style={{ color: '#1668dc' }}>{fmtAmount(data.totalAmount)}</Text>
             </Descriptions.Item>
-            <Descriptions.Item label="审核时间">{data.auditTime ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="审核时间">{formatDateTime(data.auditTime)}</Descriptions.Item>
             <Descriptions.Item label="备注">{data.remark ?? '-'}</Descriptions.Item>
           </Descriptions>
 

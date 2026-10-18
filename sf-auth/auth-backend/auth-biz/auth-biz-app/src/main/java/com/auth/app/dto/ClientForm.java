@@ -40,6 +40,7 @@ public class ClientForm {
     private String remark;
 
     /** 应用声明的角色标签（整体替换语义：以本清单为准） */
+    @jakarta.validation.Valid
     private List<RoleItem> roles;
 
     /** 角色标签项 */

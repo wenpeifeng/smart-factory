@@ -28,11 +28,14 @@ public class AuthCenterProperties {
     private String clientSecret = "demo-secret";
 
     /** 授权码回调地址（ERP 前端回调页） */
-    private String redirectUri = "http://localhost:5173/sso/callback";
+    private String redirectUri = "http://localhost:5172/sso/callback";
 
     /** 用户同步定时任务开关 */
     private boolean syncEnabled = true;
 
-    /** 用户同步 cron（默认每小时整点） */
-    private String syncCron = "0 0 * * * ?";
+    /** 用户同步 cron（实时回调失败时，默认每分钟兜底对账） */
+    private String syncCron = "0 * * * * ?";
+
+    /** 认证中心实时同步回调令牌。 */
+    private String syncCallbackToken = "identity-sync-token";
 }

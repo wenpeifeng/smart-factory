@@ -4,6 +4,8 @@ import { Spin } from 'antd'
 import { RequireAuth, RequireAdmin } from '@/router/guards'
 import MainLayout from '@/layouts/MainLayout'
 import AdminLayout from '@/layouts/AdminLayout'
+// 登录页属于认证关键路径，同步加载可避免退出跳转时触发 Suspense。
+import Login from '@/pages/login/Login'
 
 // ---- 各业务模块路由片段（模块内独立维护，此处统一合并挂载） ----
 import { basedataRoutes } from '@/router/modules/basedata'
@@ -29,8 +31,7 @@ import { wmsMobileRoutes } from '@/router/modules/wmsMobile'
 import { systemRoutes } from '@/router/modules/system'
 import { integrationRoutes } from '@/router/modules/integration'
 
-/** 懒加载页面：按需分割代码，首屏只加载布局与登录页 */
-const Login = lazy(() => import('@/pages/login/Login'))
+/** 业务首页仍按需加载，由路由级 Suspense 提供加载态。 */
 const Dashboard = lazy(() => import('@/pages/dashboard/Dashboard'))
 
 /** 模块路由片段的统一形状（各模块 router/modules/*.tsx 按此导出） */
@@ -152,7 +153,14 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: 'dashboard', element: <Dashboard /> },
+      {
+        path: 'dashboard',
+        element: (
+          <Suspense fallback={<RouteLoading />}>
+            <Dashboard />
+          </Suspense>
+        ),
+      },
       // ---- 基础资料（物料/客户/供应商/仓库） ----
       ...toRouteChildren(basedataRoutes),
       // ---- 采购（订单/入库/退货） ----

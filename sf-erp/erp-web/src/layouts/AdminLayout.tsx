@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Menu, Dropdown, Avatar, Space, Button } from 'antd'
 import type { MenuProps } from 'antd'
@@ -9,13 +9,10 @@ import {
   ApartmentOutlined,
   BookOutlined,
   FileTextOutlined,
-  CloudServerOutlined,
   KeyOutlined,
   BankOutlined,
   BellOutlined,
   LogoutOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   GlobalOutlined,
   ArrowLeftOutlined,
   CheckOutlined,
@@ -24,6 +21,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth'
 import { changeLang, LANGS } from '@/locales'
+import IdentityNoticeBell from '@/components/IdentityNoticeBell'
 
 const { Header, Sider, Content } = Layout
 
@@ -54,7 +52,6 @@ const ADMIN_MENUS: AdminMenuNode[] = [
       { key: '/admin/system/logs', icon: <FileTextOutlined />, i18nKey: 'admin.logs' },
     ],
   },
-  { key: '/admin/system/tenants', icon: <CloudServerOutlined />, i18nKey: 'admin.tenants' },
   { key: '/admin/system/login-logs', icon: <KeyOutlined />, i18nKey: 'admin.loginLogs' },
   { key: '/admin/system/notify-channels', icon: <BellOutlined />, i18nKey: 'admin.notifyChannels' },
   { key: '/admin/org/factories', icon: <BankOutlined />, i18nKey: 'admin.orgFactories' },
@@ -66,11 +63,13 @@ const ADMIN_MENUS: AdminMenuNode[] = [
  * 面向平台管理员/集团 IT（租户/组织/用户/角色/菜单/字典/审计）。
  */
 export default function AdminLayout() {
-  const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
   const { t, i18n } = useTranslation()
+
+  // 管理门户进入后提前加载菜单管理代码块，避免首次点击出现 2-3 秒空白。
+  useEffect(() => { void import('@/pages/system/menus/MenuList') }, [])
 
   const menuItems: MenuProps['items'] = useMemo(
     () =>
@@ -116,9 +115,6 @@ export default function AdminLayout() {
     <Layout style={{ height: '100vh' }}>
       {/* 深色渐变侧边栏：与管理门户定位一致的平台级视觉 */}
       <Sider
-        trigger={null}
-        collapsible
-        collapsed={collapsed}
         width={228}
         style={{
           overflow: 'auto',
@@ -145,13 +141,13 @@ export default function AdminLayout() {
           >
             A
           </Avatar>
-          {!collapsed && <span>{t('app.adminTitle')}</span>}
+          <span>{t('app.adminTitle')}</span>
         </div>
         <Menu
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
-          defaultOpenKeys={['admin-system']}
+          defaultOpenKeys={[]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
           style={{ background: 'transparent' }}
@@ -170,18 +166,13 @@ export default function AdminLayout() {
           }}
         >
           <Space size={4}>
-            <span
-              onClick={() => setCollapsed(!collapsed)}
-              style={{ cursor: 'pointer', fontSize: 16, color: 'rgba(255,255,255,0.85)' }}
-            >
-              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            </span>
-            <span style={{ color: '#36cfc9', fontSize: 12.5, fontWeight: 600, letterSpacing: 1, marginLeft: 8 }}>
+            <span style={{ color: '#36cfc9', fontSize: 12.5, fontWeight: 600, letterSpacing: 1 }}>
               {t('admin.portal').toUpperCase()}
             </span>
           </Space>
 
           <Space size={4}>
+            <IdentityNoticeBell dark />
             {/* 语言切换器 */}
             <Dropdown menu={{ items: langMenu }} placement="bottomRight">
               <Button type="text" icon={<GlobalOutlined />} style={{ color: 'rgba(255,255,255,0.85)' }}>
@@ -212,11 +203,11 @@ export default function AdminLayout() {
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
+              className="route-page"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.24, ease: 'easeOut' }}
-              style={{ height: '100%' }}
             >
               <Outlet />
             </motion.div>

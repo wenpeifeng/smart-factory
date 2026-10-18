@@ -45,6 +45,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    /** 本地账密入口只允许认证中心故障时使用的应急管理员。 */
+    private static final String EMERGENCY_USERNAME = "erp_admin";
+
     /** 登录失败计数键前缀（按租户+账号维度计数） */
     private static final String LOGIN_FAIL_KEY_PREFIX = "login:fail:";
 
@@ -85,7 +88,9 @@ public class AuthServiceImpl implements AuthService {
         // 按（租户, 账号）定位用户：登录前无租户上下文，走禁用租户插件的专用查询
         SysUser user = userMapper.selectByUsernameAndTenant(username, tenantId);
         // 账号不存在与密码错误统一提示，避免暴露账号是否存在
-        if (user == null || !passwordEncoder.matches(form.getPassword(), user.getPassword())) {
+        if (user == null || !EMERGENCY_USERNAME.equals(user.getUsername())
+                || Boolean.TRUE.equals(user.getAuthAssigned())
+                || !passwordEncoder.matches(form.getPassword(), user.getPassword())) {
             Long count = redis.opsForValue().increment(failKey);
             if (count != null && count == 1) {
                 redis.expire(failKey, LOCK_DURATION);

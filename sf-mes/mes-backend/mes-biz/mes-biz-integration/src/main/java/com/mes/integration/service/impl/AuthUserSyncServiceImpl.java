@@ -1,6 +1,7 @@
 package com.mes.integration.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.mes.framework.event.IdentityChangeEvent;
 import com.mes.integration.authcenter.AuthCenterClient;
 import com.mes.integration.authcenter.dto.AuthCenterUserDTO;
 import com.mes.integration.authcenter.dto.UserSyncResultVO;
@@ -12,11 +13,13 @@ import com.mes.system.mapper.SysUserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -44,10 +47,13 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
     private final SysUserRoleMapper sysUserRoleMapper;
     private final com.mes.system.mapper.SysRoleMapper sysRoleMapper;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public UserSyncResultVO sync() {
+    public UserSyncResultVO sync(String source) {
+        String eventSource = IdentityChangeEvent.SOURCE_LOCAL.equals(source)
+                ? IdentityChangeEvent.SOURCE_LOCAL : IdentityChangeEvent.SOURCE_GROUP;
         List<AuthCenterUserDTO> users = authCenterClient.fetchUsers(null);
         UserSyncResultVO result = new UserSyncResultVO();
         result.setFetched(users.size());
@@ -59,12 +65,25 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
             if (!StringUtils.hasText(dto.getEmployeeNo())) {
                 continue;
             }
-            centerNos.add(dto.getEmployeeNo());
+            boolean assigned = !"REVOKED".equals(dto.getInactiveReason());
+            if (assigned) {
+                centerNos.add(dto.getEmployeeNo());
+            }
             boolean active = Boolean.TRUE.equals(dto.getActive());
             boolean mesAdmin = dto.getRoles() != null && dto.getRoles().contains("mes.admin");
-            boolean existed = sysUserMapper.selectOne(Wrappers.lambdaQuery(SysUser.class)
-                    .eq(SysUser::getEmployeeNo, dto.getEmployeeNo()).last("LIMIT 1")) != null;
-            upsert(dto.getEmployeeNo(), dto.getUsername(), dto.getRealName(), active, mesAdmin, superRoleId);
+            SysUser previous = sysUserMapper.selectOne(Wrappers.lambdaQuery(SysUser.class)
+                    .eq(SysUser::getEmployeeNo, dto.getEmployeeNo()).last("LIMIT 1"));
+            boolean existed = previous != null;
+            boolean wasAssigned = existed && Boolean.TRUE.equals(previous.getAuthAssigned());
+            int previousStatus = existed && previous.getStatus() != null ? previous.getStatus() : -1;
+            Integer previousIdentityStatus = existed ? previous.getIdentityStatus() : null;
+            if (!assigned && !existed) {
+                result.setDisabled(result.getDisabled() + 1);
+                continue;
+            }
+            upsert(dto, assigned, active, mesAdmin, superRoleId);
+            publishTransition(dto, existed, wasAssigned, previousStatus, previousIdentityStatus,
+                    assigned, active, eventSource);
             if (existed) {
                 result.setUpdated(active ? result.getUpdated() + 1 : result.getDisabled() + 1);
             } else {
@@ -73,10 +92,14 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
         }
         // 孤儿对账：同步来源（remark 标记）的本地用户不在中心名单 → 禁用（中心已回收分配）
         for (SysUser local : sysUserMapper.selectList(Wrappers.lambdaQuery(SysUser.class)
-                .like(SysUser::getRemark, "auth-center%")
-                .eq(SysUser::getStatus, 1))) {
+                .eq(SysUser::getAuthAssigned, true))) {
             if (!centerNos.contains(local.getEmployeeNo())) {
+                publishChange(local, IdentityChangeEvent.REVOKED, eventSource,
+                        local.getIdentityUpdateTime());
                 local.setStatus(0);
+                local.setAuthAssigned(false);
+                local.setIdentityInactiveReason("REVOKED");
+                local.setIdentityUpdateTime(LocalDateTime.now());
                 sysUserMapper.updateById(local);
                 result.setDisabled(result.getDisabled() + 1);
                 log.info("[AUTH-SYNC] 孤儿用户禁用（中心已回收）: {}", local.getEmployeeNo());
@@ -93,7 +116,15 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
         Long superRoleId = sysRoleMapper.selectOne(Wrappers.lambdaQuery(com.mes.system.entity.SysRole.class)
                 .eq(com.mes.system.entity.SysRole::getCode, SUPER_ROLE_CODE)
                 .last("LIMIT 1")).getId();
-        return upsert(employeeNo, username, nickname, true, mesAdmin, superRoleId);
+        AuthCenterUserDTO dto = new AuthCenterUserDTO();
+        dto.setEmployeeNo(employeeNo);
+        dto.setUsername(username);
+        dto.setRealName(nickname);
+        dto.setActive(true);
+        dto.setIdentityStatus(1);
+        dto.setIdentityCreateTime(LocalDateTime.now());
+        dto.setUpdateTime(LocalDateTime.now());
+        return upsert(dto, true, true, mesAdmin, superRoleId);
     }
 
     /**
@@ -101,16 +132,24 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
      *
      * @return 落库后的本地用户
      */
-    private SysUser upsert(String employeeNo, String username, String realName, boolean active, boolean mesAdmin, Long superRoleId) {
+    private SysUser upsert(AuthCenterUserDTO dto, boolean assigned, boolean active, boolean mesAdmin, Long superRoleId) {
+        String employeeNo = dto.getEmployeeNo();
         SysUser local = sysUserMapper.selectOne(Wrappers.lambdaQuery(SysUser.class)
                 .eq(SysUser::getEmployeeNo, employeeNo)
                 .last("LIMIT 1"));
         if (local == null) {
             local = new SysUser();
             // 登录名取中心 username（默认=工号）；工号列专职做不可变身份键
-            local.setUsername(StringUtils.hasText(username) ? username : employeeNo);
+            local.setUsername(StringUtils.hasText(dto.getUsername()) ? dto.getUsername() : employeeNo);
             local.setEmployeeNo(employeeNo);
-            local.setNickname(StringUtils.hasText(realName) ? realName : employeeNo);
+            local.setAuthAssigned(assigned);
+            local.setIdentitySource(dto.getAccountSource());
+            local.setIdentityImmutable(Boolean.TRUE.equals(dto.getImmutable()));
+            copyIdentityLifecycle(local, dto);
+            local.setNickname(StringUtils.hasText(dto.getRealName()) ? dto.getRealName() : employeeNo);
+            local.setEmail(dto.getEmail());
+            local.setPhone(dto.getPhone());
+            local.setPosition(dto.getPosition());
             SecureRandom random = new SecureRandom();
             StringBuilder sb = new StringBuilder(32);
             for (int i = 0; i < 32; i++) {
@@ -122,9 +161,16 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
             local.setStatus(active ? 1 : 0);
             sysUserMapper.insert(local);
         } else {
-            if (StringUtils.hasText(realName)) {
-                local.setNickname(realName);
+            if (StringUtils.hasText(dto.getRealName())) {
+                local.setNickname(dto.getRealName());
             }
+            local.setAuthAssigned(assigned);
+            local.setIdentitySource(dto.getAccountSource());
+            local.setIdentityImmutable(Boolean.TRUE.equals(dto.getImmutable()));
+            copyIdentityLifecycle(local, dto);
+            local.setEmail(dto.getEmail());
+            local.setPhone(dto.getPhone());
+            local.setPosition(dto.getPosition());
             local.setStatus(active ? 1 : 0);
             sysUserMapper.updateById(local);
         }
@@ -143,5 +189,39 @@ public class AuthUserSyncServiceImpl implements AuthUserSyncService {
                     .eq(SysUserRole::getRoleId, superRoleId));
         }
         return local;
+    }
+
+    private void copyIdentityLifecycle(SysUser user, AuthCenterUserDTO dto) {
+        user.setIdentityStatus(dto.getIdentityStatus() != null ? dto.getIdentityStatus()
+                : Boolean.TRUE.equals(dto.getActive()) ? 1 : 3);
+        user.setIdentityInactiveReason(dto.getInactiveReason());
+        user.setEntryDate(dto.getEntryDate());
+        user.setLeaveDate(dto.getLeaveDate());
+        user.setIdentityCreateTime(dto.getIdentityCreateTime());
+        user.setIdentityUpdateTime(dto.getUpdateTime());
+    }
+
+    /** 只在人员跨状态时发送通知，保证分钟级全量对账幂等。 */
+    private void publishTransition(AuthCenterUserDTO dto, boolean existed, boolean wasAssigned,
+                                   int previousStatus, Integer previousIdentityStatus,
+                                   boolean assigned, boolean active, String source) {
+        String type = null;
+        if (!existed && assigned) type = IdentityChangeEvent.ASSIGNED;
+        else if (wasAssigned && !assigned) type = IdentityChangeEvent.REVOKED;
+        else if (Integer.valueOf(2).equals(dto.getIdentityStatus())
+                && !Integer.valueOf(2).equals(previousIdentityStatus)) type = IdentityChangeEvent.LEFT;
+        else if (previousStatus == 1 && !active) type = IdentityChangeEvent.DISABLED;
+        else if (previousStatus == 0 && active) type = IdentityChangeEvent.ENABLED;
+        if (type != null) {
+            eventPublisher.publishEvent(new IdentityChangeEvent(type, source,
+                    dto.getEmployeeNo(), dto.getRealName(), dto.getPosition(), dto.getPhone(), dto.getEmail(),
+                    dto.getEntryDate(), dto.getUpdateTime() == null ? LocalDateTime.now() : dto.getUpdateTime()));
+        }
+    }
+
+    private void publishChange(SysUser user, String type, String source, LocalDateTime operationTime) {
+        eventPublisher.publishEvent(new IdentityChangeEvent(type, source, user.getEmployeeNo(), user.getNickname(),
+                user.getPosition(), user.getPhone(), user.getEmail(), user.getEntryDate(),
+                operationTime == null ? LocalDateTime.now() : operationTime));
     }
 }

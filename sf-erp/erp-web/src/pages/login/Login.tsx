@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Button, Checkbox, Form, Input, Tag, Tooltip } from 'antd'
+import { Alert, Button, Checkbox, Form, Input, Tag, Tooltip } from 'antd'
 import {
   UserOutlined,
   LockOutlined,
@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
-import { login, fetchMe, switchOrg, ssoAuthorize, type AuthResp } from '@/api/auth'
+import { login, fetchMe, switchOrg, ssoPasswordLogin, type AuthResp } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { changeLang, type Lang } from '@/locales'
 
@@ -56,15 +56,15 @@ const riseIn = {
 /** 发光数据线条（SVG 流动虚线，模拟数据管道） */
 function DataLines() {
   const paths = [
-    { d: 'M-40,220 C240,80 420,420 760,250 S1080,110 1240,300', color: '#36cfc9', dur: 14 },
-    { d: 'M-40,430 C300,300 520,560 820,420 S1120,300 1240,470', color: '#69b7ff', dur: 20 },
-    { d: 'M-40,620 C260,500 560,700 860,560 S1140,470 1240,620', color: '#1668dc', dur: 26 },
+    { d: 'M-40,220 C240,80 420,420 760,250 S1080,110 1240,300', color: '#38a6b4', dur: 14 },
+    { d: 'M-40,430 C300,300 520,560 820,420 S1120,300 1240,470', color: '#79a9e8', dur: 20 },
+    { d: 'M-40,620 C260,500 560,700 860,560 S1140,470 1240,620', color: '#3d73c8', dur: 26 },
   ]
   return (
     <svg
       viewBox="0 0 1200 800"
       preserveAspectRatio="none"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.85 }}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.52 }}
     >
       {paths.map((p, i) => (
         <motion.path
@@ -116,20 +116,20 @@ function MetricCard({
         position: 'absolute',
         padding: '14px 18px',
         borderRadius: 14,
-        background: 'rgba(255,255,255,0.09)',
-        border: '1px solid rgba(255,255,255,0.18)',
+        background: 'rgba(255,255,255,0.72)',
+        border: '1px solid rgba(37,99,235,0.14)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
-        color: '#fff',
-        boxShadow: '0 8px 32px rgba(3,20,40,0.35)',
+        color: '#17385f',
+        boxShadow: '0 10px 28px rgba(55,94,145,0.14)',
         ...style,
       }}
     >
       <div style={{ fontSize: 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ color: '#36cfc9' }}>{icon}</span>
+        <span style={{ color: '#168997' }}>{icon}</span>
         {value}
       </div>
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#61758d', marginTop: 4 }}>{label}</div>
     </motion.div>
   )
 }
@@ -159,7 +159,7 @@ function BrandPanel({
         height: '100%',
         position: 'relative',
         overflow: 'hidden',
-        background: 'linear-gradient(160deg, #0a1929 0%, #0d2b4e 55%, #1668dc 130%)',
+        background: 'linear-gradient(155deg, #f3f8ff 0%, #e5f0ff 58%, #d8e8ff 130%)',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
@@ -175,7 +175,7 @@ function BrandPanel({
           left: -140,
           top: -120,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(54,207,201,0.22) 0%, transparent 65%)',
+          background: 'radial-gradient(circle, rgba(56,166,180,0.18) 0%, transparent 65%)',
         }}
       />
       <div
@@ -186,7 +186,7 @@ function BrandPanel({
           right: -120,
           bottom: -140,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(22,104,220,0.35) 0%, transparent 65%)',
+          background: 'radial-gradient(circle, rgba(61,115,200,0.18) 0%, transparent 65%)',
         }}
       />
       <DataLines />
@@ -234,8 +234,8 @@ function BrandPanel({
           E
         </div>
         <div>
-          <div style={{ color: '#fff', fontSize: 19, fontWeight: 700 }}>{title}</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{subtitle}</div>
+          <div style={{ color: '#17385f', fontSize: 19, fontWeight: 700 }}>{title}</div>
+          <div style={{ color: '#61758d', fontSize: 12 }}>{subtitle}</div>
         </div>
       </motion.div>
 
@@ -250,10 +250,10 @@ function BrandPanel({
             transition={{ duration: 0.45, ease: 'easeOut' }}
           >
             <div style={{ height: 4, width: 42, borderRadius: 2, background: '#36cfc9', marginBottom: 18 }} />
-            <div style={{ color: '#fff', fontSize: 27, fontWeight: 700, lineHeight: 1.35 }}>
+            <div style={{ color: '#17385f', fontSize: 27, fontWeight: 700, lineHeight: 1.35 }}>
               {values[idx]?.title}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: 14.5, marginTop: 12, lineHeight: 1.7 }}>
+            <div style={{ color: '#536b85', fontSize: 14.5, marginTop: 12, lineHeight: 1.7 }}>
               {values[idx]?.desc}
             </div>
           </motion.div>
@@ -267,7 +267,7 @@ function BrandPanel({
                 width: i === idx ? 22 : 8,
                 height: 4,
                 borderRadius: 2,
-                background: i === idx ? '#36cfc9' : 'rgba(255,255,255,0.28)',
+                background: i === idx ? '#168997' : 'rgba(61,115,200,0.22)',
                 transition: 'all .3s',
               }}
             />
@@ -275,7 +275,7 @@ function BrandPanel({
         </div>
       </div>
 
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, zIndex: 2 }}>
+      <div style={{ color: '#73869d', fontSize: 12, zIndex: 2 }}>
         © 2026 ERP Group Suite · Multi-tenant / Multi-org
       </div>
     </div>
@@ -298,7 +298,7 @@ function FocusField({ children }: { children: ReactNode }) {
           boxShadow: focused
             ? '0 4px 18px rgba(22,104,220,0.16)'
             : '0 0 0 0 rgba(22,104,220,0)',
-          borderColor: focused ? 'rgba(22,104,220,0.55)' : 'rgba(0,0,0,0,0)',
+          borderColor: focused ? 'rgba(22,104,220,0.55)' : 'rgba(0,0,0,0)',
         }}
         style={{ borderRadius: 10 }}
       >
@@ -339,8 +339,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [shake, setShake] = useState(false)
   const [remember, setRemember] = useState(() => !!localStorage.getItem(REMEMBER_KEY))
-  /** 统一认证（SSO）跳转 loading */
-  const [ssoLoading, setSsoLoading] = useState(false)
+  const [showEmergency, setShowEmergency] = useState(false)
   /** 两步式：form=账号密码，org=选择组织 */
   const [step, setStep] = useState<'form' | 'org'>('form')
   const [authResp, setAuthResp] = useState<AuthResp | null>(null)
@@ -359,11 +358,11 @@ export default function Login() {
   /** 回跳来源页（守卫重定向时记录），默认工作台 */
   const from = (location.state as { from?: string })?.from ?? '/dashboard'
 
-  /** 第一步：账号密码登录 */
+  /** 第一步：企业账号默认走认证中心；应急模式才使用 ERP 本地账号。 */
   const onFinish = async (formValue: LoginForm) => {
     setLoading(true)
     try {
-      const resp = await login(formValue)
+      const resp = showEmergency ? await login(formValue) : await ssoPasswordLogin(formValue)
       setAuth(resp.token, resp.user, {
         tenantId: resp.tenantId,
         orgId: resp.orgId,
@@ -390,17 +389,6 @@ export default function Login() {
       setShake(true)
     } finally {
       setLoading(false)
-    }
-  }
-
-  /** 统一认证登录：取后端生成的授权 URL（state+PKCE，5 分钟有效）后整页跳转统一登录页 */
-  const onSsoLogin = async () => {
-    setSsoLoading(true)
-    try {
-      const resp = await ssoAuthorize()
-      window.location.href = resp.authorizeUrl
-    } catch {
-      setSsoLoading(false)
     }
   }
 
@@ -525,14 +513,30 @@ export default function Login() {
               {step === 'form' ? (
                 <>
                   <motion.div variants={riseIn} style={{ marginBottom: 26 }}>
+                    <div
+                      style={{
+                        color: '#1668dc',
+                        fontSize: 11,
+                        fontWeight: 750,
+                        letterSpacing: 1.8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      ERP · GROUP OPERATIONS
+                    </div>
                     <div style={{ fontSize: 24, fontWeight: 750, color: '#0a1929' }}>
-                      {t('login.welcome')}
+                      {showEmergency ? t('login.emergencyTitle') : t('login.welcome')}
                     </div>
                     <div style={{ color: '#7b8794', fontSize: 13.5, marginTop: 6 }}>
-                      {t('login.subtitle')}
+                      {showEmergency ? t('login.emergencySubtitle') : t('login.subtitle')}
                     </div>
                   </motion.div>
 
+                  {showEmergency && (
+                    <motion.div variants={riseIn} style={{ marginBottom: 18 }}>
+                      <Alert type="warning" showIcon message={t('login.emergencyHint')} />
+                    </motion.div>
+                  )}
                   <Form<LoginForm>
                     form={form}
                     onFinish={onFinish}
@@ -568,16 +572,11 @@ export default function Login() {
                         </Form.Item>
                       </FocusField>
                     </motion.div>
-
-                    <motion.div
-                      variants={riseIn}
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}
-                    >
+                    <motion.div variants={riseIn} style={{ marginBottom: 18 }}>
                       <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)}>
                         {t('login.remember')}
                       </Checkbox>
                     </motion.div>
-
                     <motion.div variants={riseIn}>
                       <Button
                         type="primary"
@@ -585,29 +584,40 @@ export default function Login() {
                         block
                         htmlType="submit"
                         loading={loading}
-                        style={{ height: 46, fontWeight: 600, letterSpacing: 4 }}
+                        style={{ height: 46, fontWeight: 650 }}
                       >
-                        {loading ? t('login.submitting') : t('login.submit')}
+                        {loading
+                          ? t('login.submitting')
+                          : showEmergency
+                            ? t('login.emergencySubmit')
+                            : t('login.submit')}
                       </Button>
-                    </motion.div>
-
-                    {/* 统一认证（SSO）入口：跳认证中心统一登录页；本地账密保留作降级通道 */}
-                    <motion.div variants={riseIn} style={{ marginTop: 16 }}>
-                      <Button
-                        size="large"
-                        block
-                        icon={<SafetyCertificateOutlined />}
-                        loading={ssoLoading}
-                        onClick={onSsoLogin}
-                        style={{ height: 44 }}
-                      >
-                        {t('login.ssoButton')}
-                      </Button>
-                      <div style={{ color: '#7b8794', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-                        {t('login.ssoHint')}
-                      </div>
                     </motion.div>
                   </Form>
+                  {!showEmergency && (
+                    <motion.div
+                      variants={riseIn}
+                      style={{ color: '#7b8794', fontSize: 12, textAlign: 'center', marginTop: 10 }}
+                    >
+                      <SafetyCertificateOutlined style={{ marginRight: 6, color: '#168997' }} />
+                      {t('login.ssoHint')}
+                    </motion.div>
+                  )}
+                  <motion.div variants={riseIn}>
+                    <div style={{ borderTop: '1px solid #e7ebf0', margin: '22px 0 10px' }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <Button
+                        type="link"
+                        onClick={() => {
+                          setShowEmergency((value) => !value)
+                          form.setFieldValue('password', '')
+                        }}
+                        style={{ color: '#6f7e90' }}
+                      >
+                        {showEmergency ? t('login.backToSso') : t('login.emergencyEntry')}
+                      </Button>
+                    </div>
+                  </motion.div>
                 </>
               ) : (
                 /* ---------- 第二步：选择进入的组织 ---------- */

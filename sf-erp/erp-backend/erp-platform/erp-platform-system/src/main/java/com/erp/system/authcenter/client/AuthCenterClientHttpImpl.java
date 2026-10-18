@@ -58,8 +58,12 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
         }
         try {
             SyncResp resp = MAPPER.readValue(body, SyncResp.class);
+            requireSuccess(resp.getCode(), resp.getMessage());
             return resp.getData() == null ? List.of() : resp.getData();
         } catch (Exception e) {
+            if (e instanceof BusinessException businessException) {
+                throw businessException;
+            }
             throw BusinessException.ofKey("erp.system.sso.sync-parse-failed", e.getMessage());
         }
     }
@@ -74,20 +78,67 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
         putStatus(employeeNo, true);
     }
 
+    @Override
+    public void updateProfile(String employeeNo, ProfileForm form) {
+        putUserResource(employeeNo, "profile", form);
+    }
+
+    @Override
+    public void resetPassword(String employeeNo, String password) {
+        putUserResource(employeeNo, "password", new PasswordForm(password));
+    }
+
     /** 应用级启停（PUT /service/apps/{clientId}/users/{employeeNo}/status） */
     private void putStatus(String employeeNo, boolean enabled) {
         try {
-            restClient.put()
+            String responseBody = restClient.put()
                     .uri(properties.getBaseUrl() + "/service/apps/{clientId}/users/{employeeNo}/status",
                             properties.getClientId(), employeeNo)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new StatusForm(enabled))
                     .retrieve()
-                    .toEntity(String.class);
+                    .body(String.class);
+            requireActionSuccess(responseBody);
         } catch (RestClientResponseException e) {
             throw BusinessException.ofKey("erp.system.sso.status-failed",
                     e.getStatusCode().value(), e.getResponseBodyAsString());
+        }
+    }
+
+    private void putUserResource(String employeeNo, String resource, Object body) {
+        try {
+            String responseBody = restClient.put()
+                    .uri(properties.getBaseUrl() + "/service/apps/{clientId}/users/{employeeNo}/{resource}",
+                            properties.getClientId(), employeeNo, resource)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            requireActionSuccess(responseBody);
+        } catch (RestClientResponseException e) {
+            throw BusinessException.ofKey("erp.system.sso.user-action-failed",
+                    e.getStatusCode().value(), e.getResponseBodyAsString());
+        }
+    }
+
+    /** auth-center 业务异常使用 HTTP 200 + Result.code 表达，服务间客户端必须同时校验业务码。 */
+    private void requireActionSuccess(String body) {
+        try {
+            ActionResp resp = MAPPER.readValue(body, ActionResp.class);
+            requireSuccess(resp.getCode(), resp.getMessage());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw BusinessException.ofKey("erp.system.sso.sync-parse-failed", e.getMessage());
+        }
+    }
+
+    private void requireSuccess(Integer code, String message) {
+        if (code == null || code != 0) {
+            throw BusinessException.ofKey("erp.system.sso.user-action-failed", 200,
+                    message == null ? "auth-center business error" : message);
         }
     }
 
@@ -138,7 +189,16 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
         private List<AuthCenterUserDTO> data;
     }
 
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ActionResp {
+        private Integer code;
+        private String message;
+    }
+
     /** 应用级启停请求体 */
     record StatusForm(boolean enabled) {
     }
+
+    record PasswordForm(String password) { }
 }

@@ -4,6 +4,8 @@ import { Spin } from 'antd'
 import { RequireAuth, RequireAdmin } from '@/router/guards'
 import MainLayout from '@/layouts/MainLayout'
 import AdminLayout from '@/layouts/AdminLayout'
+// 登录页属于认证关键路径，同步加载可避免退出跳转时触发 Suspense。
+import Login from '@/pages/login/Login'
 
 // ---- 各业务模块路由片段（模块内独立维护，此处统一合并挂载） ----
 import { basedataRoutes } from '@/router/modules/basedata'
@@ -20,9 +22,9 @@ import { equipmentRoutes } from '@/router/modules/equipment'
 import { kanbanRoutes } from '@/router/modules/kanban'
 import { reportRoutes } from '@/router/modules/report'
 
-/** 懒加载页面：按需分割代码，首屏只加载布局与登录页 */
-const Login = lazy(() => import('@/pages/login/Login'))
+/** 业务首页和 SSO 回调仍按需加载，由路由级 Suspense 提供加载态。 */
 const Workbench = lazy(() => import('@/pages/dashboard/Workbench'))
+const SsoCallback = lazy(() => import('@/pages/login/SsoCallback'))
 
 /** 模块路由片段的统一形状（各模块 router/modules/*.tsx 按此导出） */
 interface RouteFragment {
@@ -104,10 +106,7 @@ export const router = createBrowserRouter([
     path: '/sso/callback',
     element: (
       <Suspense fallback={<RouteLoading />}>
-        {(() => {
-          const SsoCallback = lazy(() => import('@/pages/login/SsoCallback'))
-          return <SsoCallback />
-        })()}
+        <SsoCallback />
       </Suspense>
     ),
   },
@@ -149,7 +148,14 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/workbench" replace /> },
-      { path: 'workbench', element: <Workbench /> },
+      {
+        path: 'workbench',
+        element: (
+          <Suspense fallback={<RouteLoading />}>
+            <Workbench />
+          </Suspense>
+        ),
+      },
       // ---- 基础资料（物料/客户/供应商/仓库） ----
       ...toRouteChildren(basedataRoutes),
       // ---- 审批中心（待办/流程定义/消息） ----

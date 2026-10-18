@@ -35,9 +35,47 @@ body {
 
 /* ================= 通用工具类 ================= */
 
-/* 页面容器：统一内容区留白 */
+/*
+ * 页面容器：由路由布局统一提供内容区留白。
+ * 所有新旧业务页都会经过 route-page，erp-page 只保留为兼容性根节点，
+ * 避免旧页面与路由容器叠加两层 24px 内边距。
+ */
+.route-page {
+  min-height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
 .erp-page {
-  @apply p-6;
+  min-height: 100%;
+}
+
+/*
+ * 所有业务表格统一单行展示。列宽不足时保留内容宽度并由表格横向滚动承接，
+ * 避免编号、日期、状态和操作在单元格内断行。
+ */
+.ant-table-wrapper .ant-table-thead > tr > th,
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  white-space: nowrap;
+}
+
+.ant-table-wrapper .ant-table-content {
+  overflow-x: auto;
+}
+
+/* 原因、备注、说明等长文本列：单行省略，悬停全文由 TableEllipsisText 承接。 */
+.table-ellipsis-text {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .route-page {
+    padding: 16px;
+  }
 }
 
 /* 卡片悬浮微交互：悬停上浮 + 阴影增强（智能动感风格基础件） */

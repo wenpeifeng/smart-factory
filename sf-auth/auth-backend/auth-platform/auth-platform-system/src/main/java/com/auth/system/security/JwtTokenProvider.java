@@ -172,6 +172,22 @@ public class JwtTokenProvider {
         return deleted == null ? 0 : deleted;
     }
 
+    /** 登记应用令牌在线态，统一纳入员工离职/停用时的全局下线范围。 */
+    public void registerAppSession(Long userId, String clientId, String token, long seconds) {
+        redis.opsForValue().set(TOKEN_KEY_PREFIX + userId + ":app:" + clientId + ":" + token, "1", Duration.ofSeconds(seconds));
+    }
+
+    /** 查询应用令牌是否仍在线（RS256 验签由 OIDC 层完成）。 */
+    public boolean isAppSessionActive(Long userId, String clientId, String token) {
+        return Boolean.TRUE.equals(redis.hasKey(TOKEN_KEY_PREFIX + userId + ":app:" + clientId + ":" + token));
+    }
+
+    /** 仅撤销指定用户在指定应用的令牌，不影响其他应用。 */
+    public void invalidateAppSessions(Long userId, String clientId) {
+        var keys = redis.keys(TOKEN_KEY_PREFIX + userId + ":app:" + clientId + ":*");
+        if (keys != null && !keys.isEmpty()) redis.delete(keys);
+    }
+
     /**
      * 计算令牌剩余有效毫秒数（解析失败按 0 处理）。
      *

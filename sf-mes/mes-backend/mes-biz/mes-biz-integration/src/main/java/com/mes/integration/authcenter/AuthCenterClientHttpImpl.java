@@ -1,6 +1,7 @@
 package com.mes.integration.authcenter;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mes.common.exception.BusinessException;
 import com.mes.common.result.Result;
 import com.mes.integration.authcenter.dto.AuthCenterUserDTO;
@@ -35,6 +36,7 @@ import java.util.List;
 public class AuthCenterClientHttpImpl implements AuthCenterClient {
 
     private static final String SERVICE_TOKEN_KEY = "mes:integration:auth-service-token";
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private final IntegrationProperties properties;
     private final StringRedisTemplate redisTemplate;
@@ -45,7 +47,8 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
         String query = updatedSince != null ? "?updatedSince=" + updatedSince : "";
         String body = get("/service/apps/{clientId}/users" + query, properties.getAuthCenter().getClientId());
         SyncResp resp = parse(body, SyncResp.class);
-        return resp.getData();
+        requireSuccess(resp.getCode(), resp.getMessage());
+        return resp.getData() == null ? List.of() : resp.getData();
     }
 
     @Override
@@ -58,18 +61,60 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
         putStatus(employeeNo, true);
     }
 
+    @Override
+    public void updateProfile(String employeeNo, ProfileForm form) {
+        putUserResource(employeeNo, "profile", form);
+    }
+
+    @Override
+    public void resetPassword(String employeeNo, String password) {
+        putUserResource(employeeNo, "password", new PasswordForm(password));
+    }
+
     private void putStatus(String employeeNo, boolean enabled) {
         try {
-            restClient.put()
+            String responseBody = restClient.put()
                     .uri(properties.getAuthCenter().getBaseUrl() + "/service/apps/{clientId}/users/{employeeNo}/status",
                             properties.getAuthCenter().getClientId(), employeeNo)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new StatusForm(enabled))
                     .retrieve()
-                    .toEntity(String.class);
+                    .body(String.class);
+            requireActionSuccess(responseBody);
         } catch (RestClientResponseException e) {
             throw new BusinessException("auth-center 应用级启停失败(%d): %s", e.getStatusCode().value(), e.getResponseBodyAsString());
+        }
+    }
+
+    private void putUserResource(String employeeNo, String resource, Object body) {
+        try {
+            String responseBody = restClient.put()
+                    .uri(properties.getAuthCenter().getBaseUrl()
+                                    + "/service/apps/{clientId}/users/{employeeNo}/{resource}",
+                            properties.getAuthCenter().getClientId(), employeeNo, resource)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            requireActionSuccess(responseBody);
+        } catch (RestClientResponseException e) {
+            throw new BusinessException("auth-center 用户资料操作失败(%d): %s",
+                    e.getStatusCode().value(), e.getResponseBodyAsString());
+        }
+    }
+
+    /** auth-center 业务异常使用 HTTP 200 + Result.code 表达，服务间客户端必须同时校验业务码。 */
+    private void requireActionSuccess(String body) {
+        ActionResp resp = parse(body, ActionResp.class);
+        requireSuccess(resp.getCode(), resp.getMessage());
+    }
+
+    private void requireSuccess(Integer code, String message) {
+        if (code == null || code != 0) {
+            throw new BusinessException("auth-center 业务操作失败: %s",
+                    message == null ? "未知业务异常" : message);
         }
     }
 
@@ -118,7 +163,7 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
 
     private <T> T parse(String json, Class<T> type) {
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, type);
+            return MAPPER.readValue(json, type);
         } catch (Exception e) {
             throw new BusinessException("auth-center 响应解析失败: %s", e.getMessage());
         }
@@ -142,7 +187,16 @@ public class AuthCenterClientHttpImpl implements AuthCenterClient {
         private List<AuthCenterUserDTO> data;
     }
 
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ActionResp {
+        private Integer code;
+        private String message;
+    }
+
     /** 启停请求体 */
     record StatusForm(boolean enabled) {
     }
+
+    record PasswordForm(String password) { }
 }

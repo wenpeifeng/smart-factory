@@ -38,6 +38,7 @@ import {
   type SalOutstockRow,
 } from '@/api/sales'
 import { reverseDoc } from '@/api/basedata'
+import { formatDateTime } from '@/utils/date'
 
 const { Title } = Typography
 
@@ -150,11 +151,12 @@ export default function OutstockList() {
         return s ? <Tag color={s.color}>{s.label}</Tag> : <Tag>{v}</Tag>
       },
     },
-    { title: '创建时间', dataIndex: 'createTime', width: 160 },
+    { title: '创建时间', dataIndex: 'createTime', width: 180, render: formatDateTime },
     {
       title: '操作',
       key: 'action',
       width: 200,
+      fixed: 'right',
       render: (_, row) => (
         <Space size={0}>
           <Button type="link" size="small" onClick={() => setDetailId(row.id)}>
@@ -237,10 +239,13 @@ export default function OutstockList() {
         </Space>
 
         <Table<SalOutstockRow>
+          className="erp-nowrap-table"
           rowKey="id"
           columns={columns}
           dataSource={data?.records ?? []}
           loading={isLoading || isFetching}
+          tableLayout="fixed"
+          scroll={{ x: 1240 }}
           pagination={{
             total: data?.total ?? 0,
             current: pageNum,
@@ -307,8 +312,8 @@ function OutstockDetailDrawer({ id, onClose }: { id: number | null; onClose: () 
             <Descriptions.Item label="出库日期">{out.outDate}</Descriptions.Item>
             <Descriptions.Item label="金额">{Number(out.totalAmount).toFixed(2)}</Descriptions.Item>
             <Descriptions.Item label="数量">{Number(out.totalQty).toFixed(2)}</Descriptions.Item>
-            <Descriptions.Item label="审核时间">{out.auditTime ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="创建时间">{out.createTime ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="审核时间">{formatDateTime(out.auditTime)}</Descriptions.Item>
+            <Descriptions.Item label="创建时间">{formatDateTime(out.createTime)}</Descriptions.Item>
             <Descriptions.Item label="备注" span={2}>
               {out.remark || '-'}
             </Descriptions.Item>

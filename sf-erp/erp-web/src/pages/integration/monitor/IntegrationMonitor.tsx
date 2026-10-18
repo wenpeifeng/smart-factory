@@ -4,7 +4,6 @@ import {
   App,
   Button,
   Card,
-  Descriptions,
   Form,
   Modal,
   Pagination,
@@ -26,8 +25,19 @@ import {
   type OutboxRow,
 } from '@/api/integration'
 import HasPerm from '@/components/HasPerm'
+import { formatDateTime } from '@/utils/date'
 
 const { Title } = Typography
+
+function formatPayload(payload?: string): string {
+  if (!payload) return '-'
+
+  try {
+    return JSON.stringify(JSON.parse(payload), null, 2)
+  } catch {
+    return payload
+  }
+}
 
 /**
  * 集成监控页（ERP-MES）：outbox 出站监控 + 入站消息日志两 Tab。
@@ -89,12 +99,13 @@ export default function IntegrationMonitor() {
     { title: '业务ID', dataIndex: 'bizId', width: 90 },
     { title: '状态', dataIndex: 'status', width: 110, render: statusTag },
     { title: '重试次数', dataIndex: 'retryCount', width: 90 },
-    { title: '事件时间', dataIndex: 'eventTime', width: 170 },
-    { title: '下次重试', dataIndex: 'nextRetryTime', width: 170 },
-    { title: '成功时间', dataIndex: 'successTime', width: 170 },
+    { title: '事件时间', dataIndex: 'eventTime', width: 180, render: formatDateTime },
+    { title: '下次重试', dataIndex: 'nextRetryTime', width: 180, render: formatDateTime },
+    { title: '成功时间', dataIndex: 'successTime', width: 180, render: formatDateTime },
     {
       title: '操作',
       width: 160,
+      fixed: 'right',
       render: (_, row) => (
         <Space>
           <Button size="small" onClick={() => setViewing({ title: `outbox #${row.id} 报文`, payload: row.payload })}>
@@ -124,11 +135,12 @@ export default function IntegrationMonitor() {
     },
     { title: '幂等键', dataIndex: 'bizKey', width: 200 },
     { title: '状态', dataIndex: 'status', width: 110, render: statusTag },
-    { title: '事件时间', dataIndex: 'eventTime', width: 170 },
+    { title: '事件时间', dataIndex: 'eventTime', width: 180, render: formatDateTime },
     { title: '结果摘要', dataIndex: 'error', ellipsis: true },
     {
       title: '操作',
       width: 90,
+      fixed: 'right',
       render: (_, row) => (
         <Button size="small" onClick={() => setViewing({ title: `入站日志 #${row.id} 报文`, payload: row.payload })}>
           报文
@@ -178,12 +190,15 @@ export default function IntegrationMonitor() {
                   </HasPerm>
                 </Space>
                 <Table
+                  className="erp-nowrap-table"
                   rowKey="id"
                   size="small"
                   loading={outboxLoading}
                   columns={outboxColumns}
                   dataSource={outbox?.records ?? []}
                   pagination={false}
+                  tableLayout="fixed"
+                  scroll={{ x: 1290 }}
                 />
                 <Pagination
                   style={{ marginTop: 12, textAlign: 'right' }}
@@ -228,12 +243,15 @@ export default function IntegrationMonitor() {
                   </Form>
                 </Space>
                 <Table
+                  className="erp-nowrap-table"
                   rowKey="id"
                   size="small"
                   loading={logLoading}
                   columns={logColumns}
                   dataSource={logs?.records ?? []}
                   pagination={false}
+                  tableLayout="fixed"
+                  scroll={{ x: 980 }}
                 />
                 <Pagination
                   style={{ marginTop: 12, textAlign: 'right' }}
@@ -253,14 +271,31 @@ export default function IntegrationMonitor() {
         open={viewing !== null}
         title={viewing?.title}
         footer={null}
-        width={720}
+        width={1080}
         onCancel={() => setViewing(null)}
+        centered
+        styles={{ body: { maxHeight: '70vh', overflow: 'hidden' } }}
       >
-        <Descriptions size="small" column={1}>
-          <Descriptions.Item label="报文">
-            <pre style={{ maxHeight: 400, overflow: 'auto', margin: 0 }}>{viewing?.payload}</pre>
-          </Descriptions.Item>
-        </Descriptions>
+        <div style={{ color: '#64748b', marginBottom: 8 }}>报文内容</div>
+        <pre
+          style={{
+            minHeight: 360,
+            maxHeight: '62vh',
+            overflow: 'auto',
+            margin: 0,
+            padding: 16,
+            border: '1px solid #dbe4ef',
+            borderRadius: 8,
+            background: '#f7f9fc',
+            color: '#17324d',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: 13,
+            lineHeight: 1.65,
+            whiteSpace: 'pre',
+          }}
+        >
+          {formatPayload(viewing?.payload)}
+        </pre>
       </Modal>
     </Card>
   )

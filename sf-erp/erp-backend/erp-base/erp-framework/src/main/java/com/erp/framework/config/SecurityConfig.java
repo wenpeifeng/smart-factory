@@ -81,7 +81,8 @@ public class SecurityConfig {
                 "/dict/*", "/error", "/actuator/health",
                 "/notify/callback/**",
                 // 统一认证中心 OIDC 回调（授权码换发本地会话，state 一次性防重放）
-                "/auth/sso/authorize", "/auth/sso/callback"
+                "/auth/sso/authorize", "/auth/sso/callback", "/auth/sso/password-login",
+                "/auth/sso/internal/sync"
         };
 
         http

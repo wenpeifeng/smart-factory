@@ -38,6 +38,7 @@ public class OidcTokenService {
 
     private final TokenKeyService tokenKeyService;
     private final StringRedisTemplate redis;
+    private final com.auth.system.security.JwtTokenProvider sessions;
 
     /**
      * 签发 OIDC access token（按应用，roles claim 只含该应用的角色标签）。
@@ -56,7 +57,7 @@ public class OidcTokenService {
     public String issueAccessToken(String clientId, Long userId, String username, String realName,
                                    String employeeNo, Long orgId, Long tenantId, List<String> roles,
                                    String scope, long validity) {
-        return sign(clientId, userId, tenantId, validity, Map.of(
+        String token = sign(clientId, userId, tenantId, validity, Map.of(
                 CLAIM_TOKEN_USE, "access",
                 "username", username,
                 "name", realName,
@@ -64,6 +65,8 @@ public class OidcTokenService {
                 "org_id", orgId == null ? 0 : orgId,
                 "scope", scope == null ? "openid profile" : scope,
                 "roles", roles));
+        sessions.registerAppSession(userId, clientId, token, validity);
+        return token;
     }
 
     /**

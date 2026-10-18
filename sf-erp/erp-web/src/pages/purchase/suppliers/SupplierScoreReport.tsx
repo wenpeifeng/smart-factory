@@ -69,14 +69,14 @@ export default function SupplierScoreReport() {
     {
       title: '准时交货率',
       dataIndex: 'ontimeRate',
-      width: 100,
+      width: 120,
       align: 'right',
       render: (v: number) => `${v ?? 0}%`,
     },
     {
       title: '来料合格率',
       dataIndex: 'qualifiedRate',
-      width: 100,
+      width: 120,
       align: 'right',
       render: (v: number) => `${v ?? 0}%`,
     },
@@ -174,10 +174,13 @@ export default function SupplierScoreReport() {
       </Space>
 
       <Table<SupplierScoreRow>
+        className="erp-nowrap-table"
         rowKey="id"
         columns={columns}
         dataSource={data?.records ?? []}
         loading={isLoading || isFetching}
+        tableLayout="fixed"
+        scroll={{ x: 1120 }}
         pagination={{
           current: pageNum,
           pageSize,

@@ -19,8 +19,6 @@ import {
 
   LogoutOutlined,
   UserOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   SwapOutlined,
   GlobalOutlined,
   ControlOutlined,
@@ -33,6 +31,7 @@ import { useAuthStore } from '@/stores/auth'
 import { fetchMe, switchOrg } from '@/api/auth'
 import { useAdminAccess } from '@/hooks/usePerm'
 import { changeLang, LANGS } from '@/locales'
+import IdentityNoticeBell from '@/components/IdentityNoticeBell'
 
 const { Header, Sider, Content } = Layout
 
@@ -173,7 +172,6 @@ const MENUS: MenuNode[] = [
  * 动感设计：内容区路由切换使用 framer-motion 渐入+上移动画（AnimatePresence）。
  */
 export default function MainLayout() {
-  const [collapsed, setCollapsed] = useState(false)
   const [switching, setSwitching] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
@@ -232,7 +230,7 @@ export default function MainLayout() {
     label: (
       <span style={{ fontWeight: o.id === orgId ? 650 : 400, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         {o.name}
-        {o.id === orgId && <CheckOutlined style={{ color: '#1668dc' }} />}
+        {o.id === orgId && <CheckOutlined style={{ color: '#16765c' }} />}
       </span>
     ),
     onClick: () => onSwitchOrg(o.id),
@@ -243,7 +241,7 @@ export default function MainLayout() {
     label: (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         {l.label}
-        {i18n.language === l.value && <CheckOutlined style={{ color: '#1668dc' }} />}
+        {i18n.language === l.value && <CheckOutlined style={{ color: '#16765c' }} />}
       </span>
     ),
     onClick: () => changeLang(l.value),
@@ -267,8 +265,17 @@ export default function MainLayout() {
 
   return (
     <Layout style={{ height: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} width={220} style={{ overflow: 'auto' }}>
-        {/* 品牌 Logo 区：折叠时只显示首字母块 */}
+      <Sider
+        width={220}
+        theme="light"
+        style={{
+          overflow: 'auto',
+          background: '#f8faf9',
+          borderRight: '1px solid #dce5e1',
+          boxShadow: '4px 0 16px rgba(31, 58, 49, 0.04)',
+        }}
+      >
+        {/* 品牌区固定展示，避免业务导航退化为只有图标的悬浮菜单。 */}
         <div
           style={{
             height: 56,
@@ -276,7 +283,7 @@ export default function MainLayout() {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            color: '#fff',
+            color: '#172b26',
             fontSize: 17,
             fontWeight: 600,
           }}
@@ -284,19 +291,20 @@ export default function MainLayout() {
           <Avatar
             shape="square"
             size={30}
-            style={{ background: 'linear-gradient(135deg,#1668dc,#36cfc9)' }}
+            style={{ background: 'linear-gradient(135deg,#16765c,#ffb547)' }}
           >
             M
           </Avatar>
-          {!collapsed && <span>{t('app.title')}</span>}
+          <span>{t('app.title')}</span>
         </div>
         <Menu
-          theme="dark"
+          theme="light"
           mode="inline"
           selectedKeys={[location.pathname]}
-          defaultOpenKeys={['basedata', 'plan', 'execution', 'workflow']}
+          defaultOpenKeys={[]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{ background: 'transparent' }}
         />
       </Sider>
 
@@ -307,15 +315,13 @@ export default function MainLayout() {
             padding: '0 16px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid #eef1f5',
+            justifyContent: 'flex-end',
+            borderBottom: '1px solid #e0e7e4',
+            boxShadow: '0 2px 10px rgba(30, 55, 47, 0.035)',
           }}
         >
-          <span onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer', fontSize: 16 }}>
-            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-          </span>
-
           <Space size={4}>
+            <IdentityNoticeBell />
             {/* 组织切换器：多组织用户可见（切换重签令牌并整页刷新数据） */}
             {(orgs?.length ?? 0) > 1 && (
               <Dropdown menu={{ items: orgMenu }} placement="bottomRight" disabled={switching}>
@@ -350,16 +356,16 @@ export default function MainLayout() {
           </Space>
         </Header>
 
-        <Content style={{ overflow: 'auto' }}>
+        <Content style={{ overflow: 'auto', background: '#f4f7f6' }}>
           {/* 路由转场动画：渐入 + 12px 上移，240ms 出入场 */}
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
+              className={location.pathname === '/kanban/screen' ? 'route-page route-page--flush' : 'route-page'}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.24, ease: 'easeOut' }}
-              style={{ height: '100%' }}
             >
               <Outlet />
             </motion.div>

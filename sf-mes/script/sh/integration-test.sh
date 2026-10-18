@@ -41,7 +41,7 @@ TOKEN=$(curl -s -X POST "$MES/auth/login" -H 'Content-Type: application/json' \
 [ ${#TOKEN} -gt 50 ] && ok "admin 本地登录" || fail "admin 本地登录"
 
 OP_TOKEN=$(curl -s -X POST "$MES/auth/login" -H 'Content-Type: application/json' \
-  -d '{"username":"operator","password":"demo123456"}' | jsonget "['data']['token']")
+  -d '{"username":"operator","password":"123456"}' | jsonget "['data']['token']")
 [ ${#OP_TOKEN} -gt 50 ] && ok "演示账号 operator 登录" || fail "operator 登录"
 
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "$MES/report/cockpit" -H "Authorization: Bearer $OP_TOKEN")

@@ -18,7 +18,6 @@ import {
   Tag,
   Tree,
   TreeSelect,
-  Typography,
   Upload,
   message,
 } from 'antd'
@@ -49,8 +48,7 @@ import {
   type Material,
   type MaterialCategory,
 } from '@/api/basedata'
-
-const { Title } = Typography
+import PageHeader from '@/components/PageHeader'
 
 /** 分类树选择节点（TreeSelect/Tree 共用结构） */
 interface CategoryNode {
@@ -379,9 +377,7 @@ export default function MaterialList() {
 
   return (
     <div className="erp-page">
-      <Title level={4} style={{ marginTop: 0 }}>
-        物料管理
-      </Title>
+      <PageHeader title="物料管理" />
 
       <Row gutter={12}>
         {/* 左侧：物料分类树 */}

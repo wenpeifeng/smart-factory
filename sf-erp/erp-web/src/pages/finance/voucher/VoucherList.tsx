@@ -265,7 +265,7 @@ export default function VoucherList() {
               dataSource={detail.entries}
               columns={[
                 { title: '行号', dataIndex: 'lineNo', width: 60 },
-                { title: '摘要', dataIndex: 'summary' },
+                { title: '摘要', dataIndex: 'summary', width: 240, ellipsis: { showTitle: true } },
                 {
                   title: '科目',
                   key: 'subject',

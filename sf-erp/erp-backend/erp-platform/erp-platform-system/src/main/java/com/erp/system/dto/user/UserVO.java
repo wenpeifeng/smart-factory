@@ -3,6 +3,7 @@ package com.erp.system.dto.user;
 import com.erp.system.entity.SysUser;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -20,11 +21,22 @@ public class UserVO {
     /** 工号（认证中心匹配键；本地降级账号为空） */
     private String employeeNo;
 
+    private Boolean identityImmutable;
+
+    private Integer identityStatus;
+    private String identityInactiveReason;
+    private LocalDate entryDate;
+    private LocalDate leaveDate;
+    private LocalDateTime identityCreateTime;
+    private LocalDateTime identityUpdateTime;
+
     /** 登录账号 */
     private String username;
 
     /** 显示姓名 */
     private String nickname;
+
+    private String position;
 
     /** 手机号 */
     private String phone;
@@ -72,8 +84,16 @@ public class UserVO {
         UserVO vo = new UserVO();
         vo.setId(user.getId());
         vo.setEmployeeNo(user.getEmployeeNo());
+        vo.setIdentityImmutable(Boolean.TRUE.equals(user.getIdentityImmutable()));
+        vo.setIdentityStatus(user.getIdentityStatus());
+        vo.setIdentityInactiveReason(user.getIdentityInactiveReason());
+        vo.setEntryDate(user.getEntryDate());
+        vo.setLeaveDate(user.getLeaveDate());
+        vo.setIdentityCreateTime(user.getIdentityCreateTime());
+        vo.setIdentityUpdateTime(user.getIdentityUpdateTime());
         vo.setUsername(user.getUsername());
         vo.setNickname(user.getNickname());
+        vo.setPosition(user.getPosition());
         vo.setPhone(user.getPhone());
         vo.setEmail(user.getEmail());
         vo.setDeptId(user.getDeptId());

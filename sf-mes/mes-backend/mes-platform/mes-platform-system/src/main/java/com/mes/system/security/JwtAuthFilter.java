@@ -91,6 +91,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     MDC.put(MdcKeys.TENANT_ID, String.valueOf(tenantId));
                     MDC.put(MdcKeys.ORG_ID, String.valueOf(orgId));
                     MDC.put(MdcKeys.USER_ID, String.valueOf(userId));
+                    // 每次请求校验应用级状态：管理员禁用后，已签发 JWT 也立即失效。
+                    SysUser currentUser = userMapper.selectById(userId);
+                    if (currentUser == null || currentUser.getStatus() == null || currentUser.getStatus() != 1) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
                     Long deptId = loadDeptId(userId);
                     if (deptId != null) {
                         MDC.put(MdcKeys.DEPT_ID, String.valueOf(deptId));

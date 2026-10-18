@@ -5,9 +5,17 @@ import { get, post, put, del, type PageResult } from './request'
 /** 用户（后端 UserVO，永不包含 password） */
 export interface SysUser {
   employeeNo?: string | null
+  identityImmutable: boolean
+  identityStatus: number | null
+  identityInactiveReason: string | null
+  entryDate: string | null
+  leaveDate: string | null
+  identityCreateTime: string | null
+  identityUpdateTime: string | null
   id: number
   username: string
   nickname: string
+  position: string | null
   phone: string | null
   email: string | null
   deptId: number | null
@@ -215,6 +223,11 @@ export const pageUsers = (params: {
   keyword?: string
   deptId?: number
   status?: number
+  identityStatus?: number
+  entryDateStart?: string
+  entryDateEnd?: string
+  sortField?: string
+  sortOrder?: 'asc' | 'desc'
 }) => get<PageResult<SysUser>>('/system/users', params)
 
 /** GET /system/users/{id} 详情 */

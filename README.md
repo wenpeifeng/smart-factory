@@ -1,6 +1,13 @@
 # Smart Factory 智慧工厂数字化套件
 
-面向中小制造业的一体化数字化解决方案，对标金蝶/用友/鼎捷的制造业产品形态。套件由三个**独立部署、独立数据库、流程集成**的系统组成：
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://www.oracle.com/java/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
+
+Smart Factory 是一套面向中小制造企业的开源数字化解决方案，将统一身份认证、ERP 经营管理与 MES 车间执行整合在同一个可复现的工程中。项目适合用于制造业数字化方案演示、业务学习、二次开发和技术交流。
+
+套件由三个**独立部署、独立数据库、统一身份、流程集成**的系统组成：
 
 ```
                     ┌─────────────────────────────┐
@@ -15,6 +22,17 @@
 │  采购/销售/库存/生产/财务  │ ◀─完工回传──  │  工单/报工/质检/追溯/OEE  │
 └─────────────────────────┘              └─────────────────────────┘
 ```
+
+## 项目亮点
+
+- **统一身份入口**：员工生命周期、应用分配和系统管理员标签统一由认证中心管理，ERP/MES 只维护本系统角色与数据权限。
+- **完整制造业链路**：覆盖采购、销售、库存、生产、财务、质检、设备、追溯、报工和 OEE 等核心场景。
+- **ERP 与 MES 协同**：支持主数据、生产订单下推，以及完工、领退料和质检结果回传，并提供重试与对账机制。
+- **开箱即用的演示数据**：初始化数据跟随 Flyway 迁移交付，首次启动即可获得一致的账号和业务数据。
+- **前后端分离**：Java 21 + Spring Boot 3.3，React 18 + TypeScript + Ant Design，适合作为企业级项目参考。
+- **中文文档与界面**：根目录和各子系统均提供中文说明，便于理解系统边界、账号体系和启动流程。
+
+> 当前项目以学习、演示和二次开发为主要目标。生产部署前请完成密钥替换、网络隔离、权限复核、数据备份和安全加固。
 
 ## 三系统职责与边界
 
@@ -113,6 +131,17 @@ cd sf-auth && ./script/sh/start-all.sh
 ## 开发规范
 
 三系统共用同一套开发规范（分层/REST/命名/Flyway 版本段/前端组件规范），规范母本：`sf-erp/docs/开发规范.md`。新增系统遵循同样格式。
+
+## 参与贡献
+
+欢迎通过 Issue 提交缺陷、需求或使用反馈，也欢迎提交 Pull Request。贡献代码前建议先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，涉及账号、权限、数据库迁移或跨系统契约的改动，请同时补充对应文档和验证步骤。
+
+## 开源与安全说明
+
+- 本项目基于 [MIT License](LICENSE) 开源，可用于学习、修改和二次开发。
+- 仓库中的 `123456`、`demo-secret` 及各类 `*-token` 均为本地演示默认值，不是线上凭据。
+- 公网或生产环境必须通过环境变量覆盖数据库密码、Redis 密码、OIDC 客户端密钥、JWT/同步令牌和 ERP-MES 集成令牌。
+- 如发现安全问题，请不要公开披露利用细节，按 [SECURITY.md](SECURITY.md) 提交私密安全报告。
 
 ## Roadmap
 
